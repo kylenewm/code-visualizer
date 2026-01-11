@@ -1,17 +1,81 @@
 # CodeFlow Visualizer: Unified Project Plan
 
 ## Vision
-A developer tool that provides real-time transparency into AI-assisted coding by tracking file changes, performing multi-tier static analysis, and rendering interactive flow graphs—making the "black box" of LLM code generation observable and reviewable.
+
+A developer tool that helps you **understand how your code flows** — especially when AI makes many changes at once. Real-time change detection is the entry point; deep flow visualization is the core value.
+
+**The problem:** When Claude modifies 10-15 files in one session, it's hard to understand:
+- How the changed functions connect to each other
+- What calls what, and how data flows through
+- The overall structure of what was built or modified
+
+**The solution:** Detect changes in real-time → Visualize the call graph, imports, and data flow → Let you explore relationships interactively.
 
 ---
 
 ## Core Design Principles
 
-1. **Claude Integration First**: The differentiating value is AI-specific context. If we can't get rich Claude metadata, this becomes "yet another code viz tool."
-2. **Confidence Over Completeness**: Show what we know reliably; clearly mark what's inferred.
-3. **Progressive Disclosure**: Default to collapsed/filtered views; users drill down on demand.
-4. **Transaction-Aware**: Group changes by logical AI operations, not raw filesystem events.
-5. **Local-First Privacy**: Code never leaves the machine; prompts/secrets are redactable.
+1. **Flow Understanding First**: The primary value is seeing how code connects — call chains, data flow, module dependencies. Change tracking is the trigger, not the goal.
+2. **Real-Time Entry Point**: Changes appear immediately, giving you an entry point to explore the flow graph.
+3. **Deep on Demand**: Start with module-level view, drill into functions, then into specific call chains.
+4. **Confidence Over Completeness**: Show what we know reliably; clearly mark what's inferred (heuristic vs typechecked).
+5. **Local-First Privacy**: Code never leaves the machine; all analysis is local.
+
+---
+
+## User Experience Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  1. CHANGE DETECTED                                                     │
+│     "Claude just modified: api/auth.ts, services/user.ts, db/schema.ts" │
+│     [Click any file to explore]                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  2. MODULE VIEW (entry point)                                           │
+│                                                                         │
+│     ┌─────────┐         ┌───────────┐         ┌──────────┐             │
+│     │ api/    │────────▶│ services/ │────────▶│   db/    │             │
+│     │ (3 fn)  │         │  (5 fn)   │         │  (2 fn)  │             │
+│     └─────────┘         └───────────┘         └──────────┘             │
+│         ▲                                                               │
+│     [recently changed = highlighted]                                    │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (click to expand)
+┌─────────────────────────────────────────────────────────────────────────┐
+│  3. FUNCTION VIEW (call graph)                                          │
+│                                                                         │
+│     login() ──▶ validateUser() ──▶ findUserByEmail() ──▶ query()       │
+│        │              │                    │                            │
+│        │              ▼                    ▼                            │
+│        │       hashPassword()        UserSchema                         │
+│        ▼                                                                │
+│     createSession()                                                     │
+│                                                                         │
+│     [solid lines = exact, dashed = heuristic]                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (click function for detail)
+┌─────────────────────────────────────────────────────────────────────────┐
+│  4. DETAIL PANEL                                                        │
+│                                                                         │
+│     validateUser(email: string, password: string): Promise<User | null> │
+│                                                                         │
+│     Location: services/user.ts:45-62                                    │
+│     Last modified: 2 minutes ago                                        │
+│                                                                         │
+│     Calls:                          Called by:                          │
+│     • findUserByEmail() [exact]     • login() [exact]                   │
+│     • hashPassword() [exact]        • resetPassword() [heuristic]       │
+│                                                                         │
+│     Data flow:                                                          │
+│     email ──▶ findUserByEmail(arg0) ──▶ user.email                     │
+│     password ──▶ hashPassword(arg0) ──▶ comparison                      │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -19,206 +83,179 @@ A developer tool that provides real-time transparency into AI-assisted coding by
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Transaction Layer                              │
+│                        Change Detection Layer                            │
 ├─────────────────┬───────────────────────────────────────────────────────┤
-│  Claude Hooks   │              File Watcher                              │
-│  (primary)      │              (fallback/supplementary)                  │
-│  - MCP adapter  │              - chokidar                                │
-│  - CLI wrapper  │              - rename detection                        │
-│  - JSONL ingest │              - content hash tracking                   │
+│  Claude Hooks   │              File Watcher (fallback)                   │
+│  PostToolUse    │              chokidar + debounce                       │
 └────────┬────────┴────────────────────┬──────────────────────────────────┘
          │                             │
          └──────────┬──────────────────┘
                     ▼
          ┌──────────────────────┐
-         │  Transaction Manager │ ← Groups ops into logical units
-         │  (debounce + hooks)  │
+         │  Change Aggregator   │ ← "these files changed"
+         │  (triggers analysis) │
          └──────────┬───────────┘
                     ▼
-         ┌──────────────────────┐
-         │   Analysis Pipeline  │
-         │  ┌────────────────┐  │
-         │  │ Phase A: Fast  │  │ ← Syntax-only (immediate)
-         │  │ (tree-sitter)  │  │
-         │  └───────┬────────┘  │
-         │          ▼           │
-         │  ┌────────────────┐  │
-         │  │ Phase B: Deep  │  │ ← Semantic resolution (async)
-         │  │ (TS Lang Svc)  │  │
-         │  └───────┬────────┘  │
-         └──────────┼───────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Analysis Engine (CORE)                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│  ┌────────────────────┐     ┌────────────────────┐                      │
+│  │ Phase A: Structure │     │ Phase B: Semantics │                      │
+│  │ (tree-sitter)      │     │ (TS Language Svc)  │                      │
+│  │ • Functions        │     │ • Type resolution  │                      │
+│  │ • Imports/exports  │     │ • Cross-file calls │                      │
+│  │ • Call sites       │     │ • Data flow        │                      │
+│  │ • Classes          │     │ • Confidence tags  │                      │
+│  └────────────────────┘     └────────────────────┘                      │
+└─────────────────────────────────────────────────────────────────────────┘
+                    │
                     ▼
          ┌──────────────────────┐
          │   Graph Engine       │
-         │  - Versioned graph   │
-         │  - Delta computation │
-         │  - Stable node IDs   │
+         │  • Nodes (functions, │
+         │    classes, modules) │
+         │  • Edges (calls,     │
+         │    imports, flow)    │
+         │  • Query API         │
          └──────────┬───────────┘
-                    ▼
-         ┌──────────────────────┐
-         │   Snapshot Store     │
-         │  - Event log         │
-         │  - Materialized at   │
-         │    intervals/events  │
-         └──────────┬───────────┘
-                    ▼
-         ┌──────────────────────┐
-         │   Web Server         │
-         │  - REST + WebSocket  │
-         │  - Delta publishing  │
-         └──────────┬───────────┘
-                    ▼
-         ┌──────────────────────┐
-         │   React + D3 UI      │
-         │  - Dagre layout      │
-         │  - Position caching  │
-         │  - Progressive UI    │
-         └──────────────────────┘
+                    │
+         ┌──────────┴───────────┐
+         │                      │
+         ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐
+│  SQLite Store   │    │   WebSocket     │
+│  (persistence)  │    │   (real-time)   │
+└─────────────────┘    └────────┬────────┘
+                                │
+                                ▼
+                    ┌──────────────────────┐
+                    │   React + D3 UI      │
+                    │  • Flow graph        │
+                    │  • Call chains       │
+                    │  • Detail panels     │
+                    │  • Change highlights │
+                    └──────────────────────┘
 ```
 
 ---
 
 ## Data Model
 
-### Core Types
+### Graph Nodes (Code Elements)
 
 ```typescript
-// Transaction: The atomic unit of change
-interface Transaction {
-  id: string;                    // UUID
-  startTs: number;
-  endTs: number;
-  source: 'claude_hook' | 'fs_debounce';
-  fileOps: FileOp[];
-  hookMetadata?: HookMetadata;   // Only when source is claude_hook
-  status: 'open' | 'committed' | 'cancelled';
-}
+type NodeKind = 'module' | 'function' | 'class' | 'method' | 'variable' | 'type';
 
-// File Operations
-interface FileOp {
-  type: 'create' | 'modify' | 'delete' | 'rename';
-  path: string;
-  oldPath?: string;              // For renames
-  contentHash: string;
-  timestamp: number;
-  diff?: string;                 // Unified diff for modify
-}
-
-// Claude Hook Integration
-interface HookMetadata {
-  sessionId: string;
-  stepId: string;
-  toolName?: string;
-  intent?: string;               // 'refactor' | 'add_feature' | 'fix_bug' | etc.
-  promptRedacted?: string;       // Configurable retention
-  traceId?: string;
-}
-
-// Graph Nodes
 interface GraphNode {
-  id: string;                    // Stable: `${fileId}:${kind}:${name}:${hash}`
-  kind: 'module' | 'function' | 'class' | 'variable';
+  id: string;                    // Stable: `${fileHash}:${kind}:${name}:${sigHash}`
+  kind: NodeKind;
   name: string;
   filePath: string;
-  location: { start: number; end: number };
-  lastModified: number;
-  transactionId?: string;        // Which transaction last touched this
+  location: { startLine: number; endLine: number };
+  signature?: string;            // e.g., "(email: string, password: string): Promise<User>"
+  params?: Array<{ name: string; type?: string }>;
+  returnType?: string;
+  exported: boolean;
+  parentId?: string;             // For methods: their class ID
+  lastModified?: number;         // Timestamp of last change
 }
+```
 
-// Graph Edges
+### Graph Edges (Relationships)
+
+```typescript
+type EdgeType =
+  | 'imports'       // Module imports another
+  | 'calls'         // Function calls function
+  | 'instantiates'  // Creates instance of class
+  | 'extends'       // Class extends class
+  | 'implements'    // Class implements interface
+  | 'uses'          // Variable/type usage
+  | 'param_flow'    // Argument flows to parameter
+  | 'return_flow';  // Return value flows to assignment
+
+type EdgeConfidence = 'exact' | 'typechecked' | 'heuristic';
+
 interface GraphEdge {
   id: string;
   source: string;                // Node ID
   target: string;                // Node ID
-  type: 'imports' | 'calls' | 'defines' | 'flows_to';
-  confidence: 'exact' | 'typechecked' | 'heuristic';
-  transactionId?: string;
-}
-
-// Snapshots
-interface Snapshot {
-  id: string;
-  timestamp: number;
-  transactionId?: string;        // If triggered by transaction commit
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  stats: {
-    nodeCount: number;
-    edgeCount: number;
-    analysisTimeMs: number;
-    changedSinceLastSnapshot: string[];  // Node IDs
-  };
+  type: EdgeType;
+  confidence: EdgeConfidence;
+  callSite?: { line: number; col: number };
+  label?: string;                // e.g., "arg0", "returns"
 }
 ```
 
-### Stable Node Identity
-
-Nodes maintain identity across time via:
-1. **Primary key**: `(canonicalPath, kind, name, signatureHash)`
-2. **Rename tracking**: Store `(contentHash, size)` to detect file moves
-3. **Symbol moves**: Fuzzy match by `(name, kind, bodyHash)` within same transaction
-
----
-
-## Analysis Tiers (Explicitly Scoped)
-
-| Tier | What | How | Confidence | V0 Scope |
-|------|------|-----|------------|----------|
-| **0** | Module import graph | Parse `import`/`require`/`export` | `exact` | ✅ MVP |
-| **1a** | Local call graph | Function calls within a file | `exact` | ✅ MVP |
-| **1b** | Cross-module calls | Resolve via TS type checker | `typechecked` | ✅ MVP |
-| **1c** | Unresolved calls | Name-based heuristic matching | `heuristic` | ✅ MVP (flagged) |
-| **2** | Data flow lite | Arg→param, return→assignment | `typechecked` | ⏳ V1 |
-| **3** | Deep data flow | Full interprocedural analysis | — | ⏳ Future (CodeQL) |
-
-**V0 explicitly excludes**: Python support, runtime tracing, deep data flow.
-
----
-
-## Claude Integration Strategy
-
-### Priority: Spike This First (Days 1-3)
-
-Before building the full pipeline, validate Claude hook availability:
-
-```
-Investigation checklist:
-□ Does Claude Code expose MCP (Model Context Protocol) hooks?
-□ Can we intercept Claude CLI subprocess stdio?
-□ Is there a file-based protocol (e.g., .claude/events.jsonl)?
-□ Can we wrap the Claude CLI to capture tool invocations?
-□ What metadata is available? (step ID, tool name, file list?)
-```
-
-### Hook Adapter Interface
+### Call Chain (For Flow Exploration)
 
 ```typescript
-interface ClaudeHookAdapter {
-  // Returns async iterator of hook events
-  subscribe(workspacePath: string): AsyncIterable<HookEvent>;
-  
-  // Version for schema evolution
-  readonly protocolVersion: string;
-}
-
-interface HookEvent {
-  version: 'v1';
-  sessionId: string;
-  stepId: string;
-  timestamp: number;
-  type: 'step_start' | 'step_end' | 'tool_call' | 'file_write';
-  toolName?: string;
-  filesTouched?: string[];
-  metadata?: Record<string, unknown>;
+interface CallChain {
+  root: string;                  // Starting node ID
+  chain: Array<{
+    caller: string;
+    callee: string;
+    callSite: { line: number; col: number };
+  }>;
+  depth: number;
 }
 ```
 
-### Fallback Strategy
+---
 
-If no Claude hooks available:
-1. Use FS watcher with smart debouncing (500ms window)
-2. Infer transaction boundaries from edit burst patterns
-3. Still valuable, but clearly communicate "AI context unavailable" in UI
+## Analysis Tiers
+
+| Tier | What | How | Confidence | Priority |
+|------|------|-----|------------|----------|
+| **0** | Module import graph | Parse `import`/`require`/`export` | `exact` | MVP |
+| **1a** | Local call graph | Function calls within a file | `exact` | MVP |
+| **1b** | Cross-module calls | Resolve via TS type checker | `typechecked` | MVP |
+| **1c** | Unresolved calls | Name-based heuristic matching | `heuristic` | MVP (flagged) |
+| **2** | Data flow lite | Arg→param, return→assignment | `typechecked` | MVP (basic) |
+| **3** | Deep data flow | Full interprocedural analysis | — | Future |
+
+**MVP includes basic data flow** because understanding "where does this value go" is core to flow understanding.
+
+---
+
+## Claude Hooks Integration
+
+### Confirmed Available (from investigation)
+
+| Hook Event | What We Get | Use Case |
+|------------|-------------|----------|
+| `PostToolUse` | `file_path`, `content`, `tool_name` | Detect file changes |
+| `SessionStart` | `session_id`, `cwd` | Initialize analyzer |
+| `Stop` | `reason`, `transcript_path` | Session boundary |
+
+### Hook Implementation
+
+```typescript
+// .claude/hooks/on-file-change.ts
+// Receives: { tool_name: "Write"|"Edit", tool_input: { file_path, content } }
+// Sends to: codeflow analyzer via HTTP or file
+
+interface HookInput {
+  hook_event_name: 'PostToolUse';
+  tool_name: string;
+  tool_input: {
+    file_path: string;
+    content?: string;      // Write
+    new_string?: string;   // Edit
+    old_string?: string;   // Edit
+  };
+  session_id: string;
+  transcript_path: string;
+}
+```
+
+### Fallback (Non-Claude Edits)
+
+```typescript
+// chokidar watches project directory
+// 500ms debounce window
+// Groups rapid changes into one analysis trigger
+```
 
 ---
 
@@ -226,387 +263,243 @@ If no Claude hooks available:
 
 ### Backend
 - **Runtime**: Node.js + TypeScript
-- **File watching**: chokidar with rename detection via content hash
 - **Analysis (Phase A)**: tree-sitter (fast, multi-language ready)
-- **Analysis (Phase B)**: TypeScript Language Service (incremental, semantic)
-- **Graph data structure**: graphlib
-- **Storage**: SQLite (event log + snapshots) + in-memory (live graph)
-- **API**: Express + WebSocket
+- **Analysis (Phase B)**: TypeScript Language Service (semantic resolution)
+- **Graph**: graphlib (in-memory) + custom query layer
+- **Storage**: SQLite (persistence) + better-sqlite3
+- **API**: Express + WebSocket (ws)
 
 ### Frontend
 - **Framework**: Vite + React + TypeScript
-- **Graph rendering**: D3 with dagre layout (deterministic positioning)
-- **State management**: Zustand (lightweight)
+- **Graph rendering**: D3 with dagre layout
+- **State**: Zustand
 
 ### Why These Choices
 
 | Choice | Rationale |
 |--------|-----------|
-| tree-sitter for Phase A | Fast (10-50ms per file), incremental parsing, multi-language without separate backends |
-| TS Language Service for Phase B | Incremental compilation, handles `tsconfig.json` paths, project references |
-| Dagre over force-directed | Deterministic layout = stable positions across snapshots; no jitter |
-| SQLite over JSON files | Query by time, by file, by transaction; proper indexes; atomic writes |
-
----
-
-## Transaction & Cadence Strategy
-
-### Transaction Lifecycle
-
-```
-1. Claude hook fires "step_start" → Open transaction
-2. File events accumulate into transaction
-3. Claude hook fires "step_end" → Commit transaction → Trigger analysis
-   OR
-   No hook available → 500ms debounce window closes → Commit transaction
-4. Cancelled if superseded by new transaction before analysis completes
-```
-
-### Analysis Work Queue
-
-```typescript
-class AnalysisQueue {
-  // New transaction cancels in-flight analysis
-  enqueue(transaction: Transaction): void;
-  
-  // Returns latest completed analysis
-  getLatest(): AnalysisResult | null;
-  
-  // Phase A completes fast, Phase B may be cancelled
-  onPhaseComplete(phase: 'A' | 'B', callback: (result) => void): void;
-}
-```
-
-### Snapshot Publishing
-
-- **Trigger**: Transaction commit OR configurable timer (default: every 5s if changes exist)
-- **WebSocket message**: `{ type: 'snapshot_available', snapshotId, timestamp, changedNodeCount }`
-- **UI pulls**: Full snapshot on first load; deltas on subsequent updates
-- **Delta payload**: `{ addedNodes, removedNodes, modifiedNodes, addedEdges, removedEdges }`
-
----
-
-## UI Design: Anti-Hairball Requirements
-
-### Default View: Module Graph (Collapsed)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  [Search: ___________]  [Filters: ▼]  [Cadence: 5s ▼]      │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│     ┌─────────┐         ┌─────────┐         ┌─────────┐    │
-│     │ src/api │────────▶│src/core │◀────────│src/utils│    │
-│     │  (12)   │         │  (24)   │         │   (8)   │    │
-│     └─────────┘         └─────────┘         └─────────┘    │
-│          │                   │                              │
-│          └───────────────────┼──────────────────────────────│
-│                              ▼                              │
-│                        ┌─────────┐                          │
-│                        │  src/db │                          │
-│                        │   (5)   │                          │
-│                        └─────────┘                          │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│  Timeline: [●───────────────────────────●] 14:32:15        │
-│            └ Transaction #7: "Add auth middleware"          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Progressive Disclosure
-
-1. **Module level**: Default, shows folder/package nodes with counts
-2. **Click module**: Expands to show functions/classes within
-3. **Click function**: Shows detail panel with code location, last modified, edges
-4. **Shift+click**: Show only k-hop neighborhood (default k=2)
-
-### Visual Indicators
-
-- **Recently changed**: Yellow glow on nodes/edges touched in current transaction
-- **Confidence**: Solid lines = exact/typechecked; dashed = heuristic
-- **Edge type toggle**: Checkbox filters for imports/calls/defines
-
-### Layout Stability
-
-```typescript
-interface LayoutCache {
-  // Store positions keyed by node ID
-  positions: Map<string, { x: number; y: number }>;
-  
-  // On new snapshot: run dagre with existing positions as hints
-  // Only new nodes get fresh positions
-  updateLayout(snapshot: Snapshot): void;
-}
-```
-
----
-
-## Storage Schema
-
-```sql
--- Event log (primary source of truth)
-CREATE TABLE transactions (
-  id TEXT PRIMARY KEY,
-  start_ts INTEGER NOT NULL,
-  end_ts INTEGER,
-  source TEXT NOT NULL,  -- 'claude_hook' | 'fs_debounce'
-  hook_metadata JSON,
-  status TEXT NOT NULL   -- 'open' | 'committed' | 'cancelled'
-);
-
-CREATE TABLE file_ops (
-  id TEXT PRIMARY KEY,
-  transaction_id TEXT NOT NULL REFERENCES transactions(id),
-  type TEXT NOT NULL,
-  path TEXT NOT NULL,
-  old_path TEXT,
-  content_hash TEXT NOT NULL,
-  timestamp INTEGER NOT NULL,
-  diff TEXT
-);
-
--- File content dedup
-CREATE TABLE file_blobs (
-  content_hash TEXT PRIMARY KEY,
-  content BLOB NOT NULL
-);
-
--- Materialized snapshots (every N transactions or N seconds)
-CREATE TABLE snapshots (
-  id TEXT PRIMARY KEY,
-  timestamp INTEGER NOT NULL,
-  transaction_id TEXT REFERENCES transactions(id),
-  graph_json JSON NOT NULL,  -- Full node/edge serialization
-  stats JSON NOT NULL
-);
-
--- Indexes
-CREATE INDEX idx_transactions_ts ON transactions(start_ts);
-CREATE INDEX idx_file_ops_path ON file_ops(path);
-CREATE INDEX idx_snapshots_ts ON snapshots(timestamp);
-```
-
-### Retention Policy
-
-- **Default**: Keep last 24 hours of transactions, last 100 snapshots
-- **Configurable**: `--retention-hours=N` and `--max-snapshots=N`
-- **Manual**: `codeflow prune --before=<timestamp>`
-
----
-
-## Privacy & Security Controls
-
-```typescript
-interface PrivacyConfig {
-  // What to store from Claude hooks
-  promptRetention: 'never' | 'redacted' | 'full';
-  
-  // Patterns to exclude from analysis
-  excludePatterns: string[];  // e.g., ['**/*.secret.ts', '**/credentials/**']
-  
-  // Local-only mode (no network, explicit)
-  localOnly: boolean;  // Default: true
-}
-```
-
-Default `.codeflowrc`:
-```json
-{
-  "promptRetention": "never",
-  "excludePatterns": ["**/.env*", "**/secrets/**"],
-  "localOnly": true
-}
-```
+| tree-sitter | 10-50ms per file, incremental, multi-language |
+| TS Language Service | Semantic resolution, type-aware cross-file calls |
+| Dagre | Deterministic layout, no jitter between updates |
+| SQLite | Query by file, by time; proper indexes; atomic writes |
 
 ---
 
 ## Implementation Plan
 
-### Week 0: Claude Integration Spike (Days 1-3)
+### Phase 1: Analysis Engine (Days 1-5) ← PRIORITY
 
-**Goal**: Determine if rich Claude context is achievable.
+**Goal**: Parse code, build call graph, answer "what calls what"
 
-- [ ] Investigate Claude Code's hook mechanisms (MCP, CLI, files)
-- [ ] Build minimal `ClaudeHookAdapter` prototype
-- [ ] Test correlation: hook event → file changes
-- [ ] Document findings and fallback strategy
+- [ ] tree-sitter integration for TypeScript/JavaScript
+  - Extract: functions, classes, methods, imports, exports
+  - Extract: call sites (function calls, method calls)
+  - Target: <100ms per file
+- [ ] Build in-memory graph with nodes and edges
+- [ ] Implement query API:
+  - `findCallers(nodeId)` - who calls this function?
+  - `findCallees(nodeId)` - what does this function call?
+  - `getCallChain(nodeId, depth)` - full call chain
+  - `getModuleDeps(filePath)` - imports/exports
+- [ ] Unit tests with fixture projects
 
-**Exit criteria**: Clear answer on what metadata is available. If nothing useful, pivot to "general AI coding viz" framing.
+### Phase 2: Semantic Resolution (Days 6-8)
 
-### Week 1: Core Pipeline (Days 4-10)
+**Goal**: Cross-file call resolution, confidence tagging
 
-#### Days 4-5: Transaction Manager + File Watcher
-```bash
-mkdir codeflow && cd codeflow
-npm init -y
-npm install typescript chokidar express ws better-sqlite3
-npm install -D @types/node @types/express @types/better-sqlite3 tsx
-```
-
-- [ ] Implement `FileWatcher` with content hash tracking
-- [ ] Implement rename detection via `(hash, size)` matching
-- [ ] Build `TransactionManager` with debounce + hook integration
-- [ ] SQLite schema setup + basic event persistence
-- [ ] Unit tests with fixture directories
-
-#### Days 6-8: Two-Phase Analysis Pipeline
-
-- [ ] Phase A: tree-sitter integration for JS/TS
-  - Extract imports, exports, function declarations, call sites
-  - ~50ms per file target
-- [ ] Phase B: TS Language Service wrapper
-  - Incremental `createLanguageService` setup
-  - Cross-module call resolution via type checker
-  - Confidence tagging on edges
-- [ ] Work queue with cancellation
+- [ ] TypeScript Language Service wrapper
+- [ ] Resolve cross-module function calls
+- [ ] Tag edge confidence: exact, typechecked, heuristic
+- [ ] Basic data flow: arg → param tracking
 - [ ] Integration tests with known call graphs
 
-#### Days 9-10: Graph Engine + Snapshot Store
+### Phase 3: Change Detection (Days 9-10)
 
-- [ ] Implement `VersionedGraph` with stable node IDs
-- [ ] Delta computation between snapshots
-- [ ] Snapshot materialization on transaction commit
-- [ ] REST endpoints: `/api/snapshots/latest`, `/api/snapshots/:id`
-- [ ] WebSocket: `snapshot_available` + delta push
+**Goal**: Real-time updates when files change
 
-### Week 2: Web UI (Days 11-17)
+- [ ] Claude `PostToolUse` hook script
+- [ ] Hook triggers re-analysis of changed files
+- [ ] chokidar fallback for manual edits
+- [ ] Incremental graph updates (not full rebuild)
+- [ ] SQLite persistence of graph state
 
-#### Days 11-13: Graph Rendering Foundation
+### Phase 4: Web UI (Days 11-17)
 
-```bash
-cd web && npm create vite@latest . -- --template react-ts
-npm install d3 dagre @types/d3
-```
+**Goal**: Interactive flow visualization
 
-- [ ] Dagre layout engine with position caching
-- [ ] D3 SVG rendering with zoom/pan
-- [ ] WebSocket client for snapshot updates
-- [ ] Basic node/edge rendering with confidence styling
+- [ ] Express server + WebSocket for real-time updates
+- [ ] React app with D3/dagre rendering
+- [ ] Module-level view (collapsed by default)
+- [ ] Click-to-expand to function level
+- [ ] Call chain visualization (A → B → C → D)
+- [ ] Detail panel: signature, location, callers/callees
+- [ ] Recently-changed highlighting
+- [ ] Edge confidence styling (solid vs dashed)
+- [ ] Search by function name
 
-#### Days 14-15: Progressive Disclosure UI
+### Phase 5: UX Polish (Priority Matrix)
 
-- [ ] Collapsible module nodes (folder grouping)
-- [ ] Click-to-expand function list
-- [ ] Detail panel: code location, last modified, transaction context
-- [ ] Shift+click for neighborhood subgraph
+#### P0 - Ship Immediately (Essential UX)
 
-#### Days 16-17: Timeline & Filters
+**Interaction**
+- [ ] Keyboard shortcuts (F=focus, Esc=clear, /=search, +/-=zoom, arrows=navigate siblings/parent/child)
+- [ ] Hover states (brightness 1.2, stroke highlight, font-weight change on nodes/edges)
+- [ ] Double-click to focus (quick shortcut for focus mode on node)
+- [ ] Context menu on right-click (focus, hide, view source, copy path, filter file, expand callees)
 
-- [ ] Timeline slider with transaction markers
-- [ ] "Changed since last snapshot" highlighting
-- [ ] Edge type toggle filters
-- [ ] Search by symbol name
-- [ ] Confidence threshold slider
+**Visual Feedback**
+- [ ] Selected node pulse animation (2s ease-in-out infinite, stroke-width 4-6px)
+- [ ] Loading skeleton states (show placeholder nodes/edges while data loads)
+- [ ] Empty state design (icon + "Select a node to explore" + tip text)
+- [ ] Error boundaries (crash recovery with "Try refreshing" message)
 
-### Week 3: Integration & Polish (Days 18-21)
+**Navigation**
+- [ ] Clickable file paths in details panel (click segment to filter by path)
+- [ ] Session persistence (save zoom/pan/selection/focus to localStorage)
 
-- [ ] End-to-end testing on real projects (50-file, 200-file)
-- [ ] Performance profiling: target <500ms incremental update
-- [ ] Error handling: syntax errors, partial files, missing imports
-- [ ] CLI: `codeflow watch ./project --port=3000 --cadence=5s`
-- [ ] Documentation + README with GIF demo
+#### P1 - Essential for Polish (Month 1)
+
+**Visual Design**
+- [ ] Edge bundling (d3.bundleEdges with tension 0.85 to reduce spaghetti)
+- [ ] Edge direction clarity (scale arrowheads with zoom, orange for visibility)
+- [ ] Node label truncation (20 char max + ellipsis, full name in tooltip)
+- [ ] Grid background (subtle 50px pattern for distance reference)
+- [ ] Color palette enhancement (distinguish exported/utility functions, public/private methods)
+
+**Navigation**
+- [ ] Minimap (overview rectangle + viewport indicator, click to jump)
+- [ ] Pan constraints (prevent losing graph off-screen)
+- [ ] Fit-to-selection (zoom to show selected + N-level neighbors)
+
+**Information**
+- [ ] Call chain visualization (tree view in sidebar: caller → current → callees)
+- [ ] Filter panel (checkboxes for type, visibility, file dropdown, complexity slider)
+
+**Export**
+- [ ] Export as PNG/SVG (svg.outerHTML → blob download)
+- [ ] Share view URL (encode node/zoom/focus in URL hash)
+- [ ] Export subgraph data (JSON, Mermaid, Markdown)
+
+#### P2 - Competitive Differentiators (Month 2)
+
+**Metrics & Insights**
+- [ ] Complexity metrics (cyclomatic complexity, LOC, params count on nodes)
+- [ ] Statistics dashboard (totals, avg complexity, most called, hotspots list)
+- [ ] Node visual hierarchy (size nodes by call count, height by complexity)
+- [ ] Documentation integration (show JSDoc/docstring, params, returns in panel)
+
+**Advanced Interaction**
+- [ ] Node pinning (pinned nodes always visible even outside focus)
+- [ ] Quick jump to definition (fuzzy search command palette)
+- [ ] Expand/collapse inline (+ button on nodes to reveal children in place)
+- [ ] Dependency graph toggle (switch between calls/imports/data flow views)
+
+**Polish**
+- [ ] Connection status indicator (animated ripple on status dot)
+- [ ] Zoom level progress bar (visual indicator alongside percentage)
+- [ ] Focus mode boundary (glowing outline around focused cluster)
+- [ ] Responsive design (mobile/tablet bottom sheet for details panel)
+
+#### P3 - Explicitly Deferred (Out of Scope)
+
+| Item | Reason |
+|------|--------|
+| AI-powered insights | Requires ML backend, completely different product. Would need to analyze code patterns, suggest refactors, detect smells. That's a separate tool. |
+| Git integration/time-travel | Scope creep. We visualize *current* code flow, not version history. Git tools already exist for that. |
+| Live collaboration cursors | Enterprise SaaS feature requiring real-time sync infrastructure. Way out of scope for a developer tool. |
+| Multi-select/lasso | Complex interaction model. Focus mode already covers "show me related nodes" use case. |
+| Virtual rendering | Premature optimization. Current SVG handles 200 files fine. Only implement if we actually hit perf issues at scale. |
+| Debounced search | Already implemented - search only triggers on nodes in current graph, not full re-render. |
+| Progressive loading | Over-engineering - full graph loads in <1s for target project sizes. WebSocket already streams updates. |
+
+### Original Phase 5: Production Polish
+
+- [ ] End-to-end testing on real projects
+- [ ] Performance profiling (<500ms updates)
+- [ ] CLI: `codeflow watch ./project --port=3000`
+- [ ] Error handling (syntax errors, partial parses)
+- [ ] Documentation
 
 ---
 
 ## File Structure
 
 ```
-codeflow/
+codeflow-viz/
 ├── src/
-│   ├── hooks/              # Claude integration adapters
-│   │   ├── adapter.ts      # Interface definition
-│   │   ├── mcp.ts          # MCP adapter (if available)
-│   │   ├── cli-wrapper.ts  # CLI subprocess wrapper
-│   │   └── fallback.ts     # FS-only fallback
-│   ├── watcher/
-│   │   ├── file-watcher.ts
-│   │   └── rename-detector.ts
-│   ├── transactions/
-│   │   ├── manager.ts
-│   │   └── types.ts
 │   ├── analyzer/
-│   │   ├── pipeline.ts     # Two-phase coordinator
-│   │   ├── phase-a.ts      # tree-sitter fast pass
-│   │   ├── phase-b.ts      # TS language service
-│   │   └── work-queue.ts
+│   │   ├── tree-sitter.ts     # Phase A: syntax extraction
+│   │   ├── typescript-service.ts  # Phase B: semantic resolution
+│   │   ├── pipeline.ts        # Orchestrates both phases
+│   │   └── extractor.ts       # Node/edge extraction logic
 │   ├── graph/
-│   │   ├── versioned-graph.ts
-│   │   ├── node-identity.ts
-│   │   └── delta.ts
+│   │   ├── graph.ts           # Core graph data structure
+│   │   ├── query.ts           # Query API (callers, callees, chains)
+│   │   └── delta.ts           # Incremental updates
+│   ├── hooks/
+│   │   ├── claude-hook.ts     # PostToolUse handler
+│   │   └── file-watcher.ts    # chokidar fallback
 │   ├── storage/
-│   │   ├── sqlite.ts
-│   │   └── snapshots.ts
+│   │   └── sqlite.ts          # Persistence layer
 │   ├── server/
-│   │   ├── express.ts
-│   │   └── websocket.ts
-│   └── index.ts            # CLI entry point
+│   │   ├── express.ts         # REST API
+│   │   └── websocket.ts       # Real-time updates
+│   ├── types/
+│   │   └── index.ts           # Core type definitions
+│   └── index.ts               # CLI entry point
 ├── web/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Graph.tsx
-│   │   │   ├── Timeline.tsx
+│   │   │   ├── Graph.tsx      # Main flow graph
+│   │   │   ├── CallChain.tsx  # Linear call chain view
 │   │   │   ├── DetailPanel.tsx
-│   │   │   └── Filters.tsx
+│   │   │   └── ChangeNotification.tsx
 │   │   ├── hooks/
-│   │   │   ├── useSnapshot.ts
-│   │   │   └── useLayout.ts
+│   │   │   ├── useGraph.ts
+│   │   │   └── useWebSocket.ts
 │   │   ├── lib/
 │   │   │   ├── dagre-layout.ts
 │   │   │   └── d3-renderer.ts
 │   │   └── App.tsx
 │   └── index.html
 ├── test/
-│   ├── fixtures/           # Known call graph projects
-│   └── *.test.ts
-├── .codeflowrc.example
-└── package.json
+│   └── fixtures/              # Projects with known call graphs
+├── package.json
+├── tsconfig.json
+└── .codeflowrc.example
 ```
 
 ---
 
 ## Success Criteria
 
-### MVP (Week 3)
+### MVP
 
-1. ✅ `codeflow watch ./project` starts and opens browser UI
-2. ✅ Graph updates within 3 seconds of file save
-3. ✅ Correctly identifies: new files, modified functions, import changes
-4. ✅ Cross-module call resolution with confidence indicators
-5. ✅ Timeline scrubbing through recent transactions
-6. ✅ Module-level collapse/expand working
-7. ✅ Works on 50-file TS project without perceptible lag (<500ms updates)
+1. `codeflow watch ./project` starts and opens browser
+2. Shows module-level dependency graph on load
+3. Click module → see functions and their call relationships
+4. Click function → see callers, callees, signature, location
+5. When Claude changes files → graph updates within 3 seconds
+6. Changed nodes/edges highlighted
+7. Works on 50-file TypeScript project without lag
+
+### Flow Understanding (Core Value)
+
+- [ ] Can answer: "What calls this function?" in one click
+- [ ] Can answer: "What does this function call?" in one click
+- [ ] Can trace: A → B → C → D call chain visually
+- [ ] Can see: which calls are certain vs heuristic
+- [ ] Can see: basic data flow (arg → param)
 
 ### Performance Targets
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| Phase A analysis | <100ms per file | Instrumented timing |
-| Phase B analysis | <1s for 10 changed files | Instrumented timing |
-| Snapshot publish latency | <500ms from transaction commit | End-to-end timer |
-| UI render | <200ms for 500-node graph | Browser devtools |
-| Memory (200-file project) | <500MB RSS | Process monitor |
-
-### Testing Requirements
-
-- [ ] Unit tests for analyzer with fixture projects containing known call graphs
-- [ ] Integration test: modify file → verify correct edge changes
-- [ ] Rename test: move file → verify node identity preserved
-- [ ] Stress test: rapid edits (10 files/second) → verify no crashes, reasonable lag
-
----
-
-## Future Scope (Post-MVP)
-
-### V1 (4-6 weeks out)
-- Data flow lite (arg/return tracking)
-- Diff view: "what changed this transaction" with code snippets
-- Export to Mermaid/DOT for documentation
-
-### V2 (3+ months out)
-- Python support via tree-sitter + language server
-- VS Code extension (embedded webview)
-- Runtime tracing integration for actual execution paths
-- Multi-user collaboration (shared session viewing)
+| Metric | Target |
+|--------|--------|
+| Phase A analysis | <100ms per file |
+| Phase B analysis | <1s for 10 files |
+| Graph update | <500ms after file change |
+| UI render | <200ms for 500-node graph |
+| Memory | <500MB for 200-file project |
 
 ---
 
@@ -614,17 +507,26 @@ codeflow/
 
 | Risk | Mitigation |
 |------|------------|
-| Claude hooks unavailable/insufficient | Spike first; fallback to FS-only with clear UX |
-| TS Language Service too slow | Cache aggressively; Phase A provides immediate feedback |
-| Graph becomes unreadable | Progressive disclosure is MVP requirement, not nice-to-have |
-| Syntax errors during active editing | Graceful degradation: show last valid analysis, mark stale |
-| Large monorepos | Explicit include paths; respect `.gitignore`; project reference support |
+| Graph unreadable (hairball) | Collapse to module level by default; progressive disclosure |
+| Cross-file resolution slow | Phase A gives immediate feedback; Phase B async |
+| Syntax errors break analysis | Graceful degradation; show last valid state |
+| Too many nodes | Force module collapse above 500 nodes |
 
 ---
 
-## Open Decisions (Resolve During Implementation)
+## Future Scope
 
-1. **Default cadence**: 2s vs 5s vs 10s? (Start with 5s, make configurable)
-2. **Max graph size before forced collapse**: 200 nodes? 500? (Test empirically)
-3. **Hook event format versioning**: Strict schema validation vs permissive parsing?
-4. **Delta vs full snapshot over WebSocket**: Depends on typical snapshot size (measure first)
+### V1.1 (Post-UX Polish)
+- Richer data flow (return → assignment tracking)
+- Diff view: code snippets of what changed
+- Timeline scrubbing (optional)
+- Cross-file call resolution (Phase 2 - TypeScript Language Service)
+
+### V2 (Future)
+- VS Code extension
+- Runtime tracing integration
+- Go/Rust/Java language support
+
+### Completed (Originally Future)
+- Python support (done in Phase 1)
+- Export to Mermaid/DOT (scheduled for Phase 5 Tier 5)

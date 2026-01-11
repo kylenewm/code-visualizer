@@ -1,0 +1,64 @@
+{
+  "description": "Expected call graph for e2e-project/app.ts fixture",
+  "note": "Single-file fixture because cross-file call resolution not yet implemented",
+  "testFile": "app.ts",
+  "expectedNodes": {
+    "functions": [
+      "handleRequest",
+      "healthCheck",
+      "validateInput",
+      "processData",
+      "transformData",
+      "saveToDb",
+      "getAllRecords",
+      "clearDb",
+      "logWrite",
+      "formatResponse",
+      "toJson",
+      "parseJson",
+      "constructor"
+    ],
+    "classes": [
+      "ValidationError"
+    ],
+    "exported": [
+      "handleRequest",
+      "healthCheck",
+      "ValidationError",
+      "getAllRecords",
+      "clearDb",
+      "parseJson"
+    ]
+  },
+  "expectedEdges": {
+    "calls": [
+      { "from": "handleRequest", "to": "validateInput" },
+      { "from": "handleRequest", "to": "processData" },
+      { "from": "handleRequest", "to": "formatResponse" },
+      { "from": "processData", "to": "transformData" },
+      { "from": "processData", "to": "saveToDb" },
+      { "from": "saveToDb", "to": "logWrite" },
+      { "from": "formatResponse", "to": "toJson" }
+    ]
+  },
+  "expectedCallTree": {
+    "entryPoint": "handleRequest",
+    "depth3": [
+      "handleRequest",
+      "validateInput",
+      "processData",
+      "transformData",
+      "saveToDb",
+      "logWrite",
+      "formatResponse",
+      "toJson"
+    ]
+  },
+  "entryPoints": [
+    "handleRequest",
+    "healthCheck",
+    "getAllRecords",
+    "clearDb",
+    "parseJson"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "codeflow-viz",
+  "version": "0.1.0",
+  "description": "Real-time visualization of AI-assisted code changes",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "codeflow": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "build:web": "cd web && npm run build",
+    "dev": "tsx src/index.ts serve",
+    "dev:web": "cd web && npm run dev",
+    "start": "node dist/index.js serve",
+    "analyze": "tsx src/index.ts analyze",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "test:all": "vitest run && playwright test",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "chokidar": "^4.0.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "graphlib": "^2.1.8",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-python": "^0.21.0",
+    "tree-sitter-typescript": "^0.21.0",
+    "uuid": "^11.0.5",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/supertest": "^6.0.3",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.13",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
