@@ -1,81 +1,89 @@
-# Project: CodeFlow Viz
+# Project: CodeFlow Visualizer
 
 ## Overview
-A real-time code flow visualization tool that shows:
-1. **Build-time tracking** - Watch files being created/modified as Claude builds
-2. **Static flow analysis** - Visualize function calls, data flow between modules
-3. **Rendered at cadence** - Periodic snapshots of code structure, not continuous
+A developer tool that provides real-time transparency into AI-assisted coding by tracking file changes, performing multi-tier static analysis, and rendering interactive flow graphs—making the "black box" of LLM code generation observable and reviewable.
 
 ## Invariants (ALWAYS FOLLOW)
 
-### Architecture
-- Always use file system watchers (chokidar) for build-time tracking - never poll for changes
-- Always parse code with tree-sitter for language-agnostic AST analysis - never use regex for code parsing
-- Always render flow graphs using D3.js or similar - never use canvas for interactive graphs
-- Never block the main thread during AST parsing - always use worker threads for heavy analysis
+### Claude Integration
+- Always check for Claude hooks availability before falling back to filesystem-only mode
+- Never store full prompt content in database unless explicitly configured with `promptRetention: 'full'`
+- Always redact sensitive information from hook metadata before persistence
+- Transaction source must be explicitly tagged as 'claude_hook' or 'fs_debounce' - never mixed or ambiguous
 
-### Data Flow
-- Always store flow snapshots in SQLite for persistence - never keep only in memory
-- Always debounce file change events (500ms minimum) - never trigger analysis on every keystroke
-- Always cache parsed ASTs until file changes - never re-parse unchanged files
-- Never send source code to external services - all analysis must be local
+### Transaction Management
+- Never commit a transaction without a valid timestamp and unique UUID
+- Always debounce filesystem events to 500ms minimum before creating fallback transactions
+- Transaction status must progress linearly: 'open' → 'committed' OR 'open' → 'cancelled' - never backwards
+- Never allow overlapping open transactions for the same file paths
 
-### Visualization
-- Always use directed graphs for call flow - never use tree layouts for circular dependencies
-- Always show file:line references on hover - never hide source locations
-- Always support zoom/pan for large codebases - never render fixed-size graphs
-- Never auto-layout while user is interacting - always pause layout on mouse down
+### Graph Node Identity
+- Node IDs must always use the format `${fileId}:${kind}:${name}:${hash}` for stability across snapshots
+- Never create nodes without stable identity - all nodes must survive file renames and moves
+- Always use content hash + size tuple for rename detection, never rely on filesystem move events alone
+- Graph edges must reference node IDs, never file paths directly
 
-### Performance
-- Always limit graph nodes to 500 visible at once - never render entire codebase at once
-- Always use virtual scrolling for file lists - never render all files in DOM
-- Always compress snapshots older than 1 hour - never keep full history uncompressed
-- Never analyze node_modules or .git directories - always exclude by default
+### Analysis Pipeline
+- Phase A (tree-sitter) analysis must complete in <100ms per file - cancel if exceeded
+- Never run Phase B semantic analysis without successful Phase A completion
+- Always tag edge confidence as 'exact', 'typechecked', or 'heuristic' - never leave unspecified
+- New analysis must cancel in-flight analysis for the same transaction - never queue multiple analyses
 
-### Integration
-- Always support Claude Code hooks for build tracking - never require manual instrumentation
-- Always export flow data as JSON - never use proprietary formats
-- Always provide CLI interface alongside web UI - never require browser for basic info
+### Storage & Privacy
+- Never store file content directly - always use content hash with separate blob storage
+- All file paths in exclude patterns must be honored - never analyze or store excluded files
+- SQLite writes must be atomic - use transactions for multi-table operations
+- Never expose internal file paths in API responses without privacy filtering
+
+### UI Rendering
+- Graph layout positions must be cached and reused - never recalculate positions for existing nodes
+- Never render more than 500 nodes without forced module-level collapse
+- WebSocket delta updates must include only changed elements, never full graph re-transmission
+- Progress indicators must appear for any operation exceeding 200ms
+
+### Performance Requirements
+- Snapshot materialization must complete in <1 second for 200-file projects
+- Never block the main thread during Phase B analysis - must be async with work queue
+- Memory usage must not exceed 500MB RSS for 200-file projects
+- UI updates must render in <500ms from transaction commit to visual change
 
 ## Stack
-- **Backend**: Node.js with Express
-- **Frontend**: React with D3.js for visualization
-- **Parser**: tree-sitter (multi-language support)
-- **Database**: SQLite for snapshots
+- **Backend**: Node.js + TypeScript + Express + WebSocket
+- **Analysis**: tree-sitter (Phase A) + TypeScript Language Service (Phase B)
+- **Storage**: SQLite + better-sqlite3
 - **File Watching**: chokidar
-- **Build Tracking**: Claude Code hooks integration
+- **Graph**: graphlib + dagre layout
+- **Frontend**: Vite + React + TypeScript + D3 + Zustand
 
 ## Testing
 ```bash
-npm test
-npm run test:watch
+npm test                    # Run all tests
+npm run test:unit          # Unit tests only
+npm run test:integration   # Integration tests
+npm run test:watch         # Watch mode
+npm run test:fixtures      # Test with known call graph projects
 ```
 
 ## Slash Commands
 | Command | What |
 |---------|------|
-| /test | Run tests |
-| /test-cycle | Generate + run progressively |
-| /done | Verify before complete |
-| /review | Subagent review |
-| /ship | verify → commit → PR |
-| /save | Update STATE.md + LOG.md |
-| /summarize | Explain changes |
-| /commit | Commit with message |
+| /test | Run tests and check analysis pipeline |
+| /done | Mark current task complete, update STATE.md |
+| /review | Check invariants compliance and performance targets |
+| /ship | Package for release, verify all success criteria |
+| /save | Commit current progress to LOG.md |
 
-**Flow:** `work → /test → /done → /review → /ship`
-
-## Key Files (planned)
-- `src/watcher/index.ts` - File system watcher
-- `src/parser/index.ts` - AST parsing with tree-sitter
-- `src/analyzer/flow.ts` - Call graph and data flow analysis
-- `src/storage/snapshots.ts` - SQLite snapshot storage
-- `src/server/index.ts` - Express API server
-- `src/web/App.tsx` - React visualization UI
-- `src/web/components/FlowGraph.tsx` - D3 graph component
-- `src/cli/index.ts` - CLI interface
-- `lib/db.ts` - Database setup
+## Key Files
+- `src/hooks/adapter.ts` - Claude integration interface
+- `src/transactions/manager.ts` - Transaction lifecycle management
+- `src/analyzer/pipeline.ts` - Two-phase analysis coordinator
+- `src/graph/versioned-graph.ts` - Graph engine with stable node IDs
+- `src/storage/sqlite.ts` - Event log and snapshot persistence
+- `src/server/express.ts` - REST API and WebSocket server
+- `web/src/components/Graph.tsx` - Interactive graph rendering
+- `web/src/lib/dagre-layout.ts` - Position-cached layout engine
+- `.codeflowrc` - Privacy and retention configuration
 
 ## Context
-- STATE.md: Current work and progress
-- LOG.md: History (append-only)
+- STATE.md: Current work progress and next tasks
+- LOG.md: Implementation history and decision log

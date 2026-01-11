@@ -1,8 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm *)",
-      "Bash(node *)",
+      "Bash(pytest *)",
+      "Bash(python *)",
       "Bash(git status)",
       "Bash(git diff *)",
       "Bash(git log *)",
