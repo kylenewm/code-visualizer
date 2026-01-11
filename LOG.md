@@ -6,6 +6,50 @@
 
 ## 2026-01-11
 
+### Source Preview Expand/Collapse + Dynamic Node Width
+
+**Source preview improvements:**
+- Increased preview lines from 5 to 12 in both extractors
+- Added "Show more"/"Show less" button in CallTreeView
+- Default shows 5 lines, click to expand to full 12 lines
+- Better visibility into function implementations
+
+**Graph node width:**
+- Made node width dynamic based on function name length
+- MIN_NODE_WIDTH=100px, MAX_NODE_WIDTH=220px
+- ~8px per character + 24px padding
+- Reduces truncation for longer function names
+
+**Files changed:**
+- `src/analyzer/extractor.ts` - PREVIEW_LINES = 12
+- `src/analyzer/extractor-python.ts` - PREVIEW_LINES = 12
+- `web/src/components/CallTreeView.tsx` - SourcePreview component with expand/collapse
+- `web/src/lib/dagre-layout.ts` - getNodeWidth() for dynamic sizing
+- `web/src/App.css` - .source-expand-btn styling
+
+**Tested:** council-v2 project with 33 functions, 7 files
+
+---
+
+### Graph View: File Group Visibility Fix
+
+**Problem:** File group rectangles had poor contrast against dark background - hard to distinguish files.
+
+**Solution:**
+- Bright distinct colors per file (blue, green, amber, red, purple, cyan, orange, pink)
+- Colored strokes (2px, 60% opacity) instead of dark gray
+- File name labels in matching color, bolder (12px, 600 weight)
+- Node borders also colored by file
+- Legend updated to show file colors
+
+**Files changed:**
+- `web/src/components/Graph.tsx` - File grouping with better colors
+- `web/src/App.css` - Legend section styling
+
+**Note:** Rectangles still overlap when files have nodes in different layout positions (layout is by call graph connectivity, not by file). This is a fundamental limitation - would need layout-by-file-first to fix.
+
+---
+
 ### v2 Phase 4 Complete: Polish
 
 Final polish for v2 architecture-first visualization.

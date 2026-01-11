@@ -30,8 +30,10 @@ function generateEdgeId(source: string, target: string, type: string): string {
 // Source Preview & Description Extraction
 // ============================================
 
+const PREVIEW_LINES = 12;
+
 /**
- * Extract first 3-5 lines of function body as source preview
+ * Extract first N lines of function body as source preview
  */
 function extractSourcePreview(node: SyntaxNode): string | undefined {
   const body = node.childForFieldName('body');
@@ -40,13 +42,13 @@ function extractSourcePreview(node: SyntaxNode): string | undefined {
   const bodyText = body.text;
   if (!bodyText) return undefined;
 
-  // Split into lines, take first 5, join back
+  // Split into lines, take first N, join back
   const lines = bodyText.split('\n');
-  const previewLines = lines.slice(0, 5);
+  const previewLines = lines.slice(0, PREVIEW_LINES);
 
   // If we truncated, add ellipsis indicator
   let preview = previewLines.join('\n');
-  if (lines.length > 5) {
+  if (lines.length > PREVIEW_LINES) {
     preview += '\n    # ...';
   }
 

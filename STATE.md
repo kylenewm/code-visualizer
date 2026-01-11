@@ -14,6 +14,28 @@ Replace 135-node function graph with module-level architecture view (5-15 boxes)
 
 ---
 
+## Post-v2: Graph View Improvements
+- [x] File group visibility fix
+  - Bright distinct colors per file (blue, green, amber, red, purple, cyan, orange, pink)
+  - Colored strokes and file name labels
+  - Node borders colored by file
+  - Updated legend with file colors
+- [x] Dynamic node width
+  - Nodes now size based on function name length (100-220px)
+  - Prevents truncation for longer function names
+- [x] Source preview expand/collapse
+  - Increased preview from 5 to 12 lines
+  - Added "Show more"/"Show less" button in Walkthrough view
+  - Default collapsed view shows 5 lines, expanded shows all 12
+
+## Known Issue
+- File group rectangles overlap when nodes from different files are positioned nearby
+- Root cause: Layout is by call graph connectivity, not by file
+- Would need layout-by-file-first approach to fully fix
+- Very long function names (>25 chars) still truncated at MAX_NODE_WIDTH=220px
+
+---
+
 ## v2 Recently Completed (Phase 4: Polish)
 - [x] Persist expansion state to localStorage
   - Saves expanded modules/files across page refreshes

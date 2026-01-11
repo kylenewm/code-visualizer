@@ -24,8 +24,16 @@ export interface LayoutResult {
   height: number;
 }
 
-const NODE_WIDTH = 160;
+const MIN_NODE_WIDTH = 100;
+const MAX_NODE_WIDTH = 220;
 const NODE_HEIGHT = 40;
+const CHAR_WIDTH = 8; // Approximate pixels per character
+
+/** Calculate node width based on name length */
+function getNodeWidth(name: string): number {
+  const textWidth = name.length * CHAR_WIDTH + 24; // 24px padding
+  return Math.max(MIN_NODE_WIDTH, Math.min(MAX_NODE_WIDTH, textWidth));
+}
 
 /**
  * Find connected components using union-find
@@ -97,11 +105,14 @@ function layoutComponent(
 
   const nodeSet = new Set(nodeIds);
 
+  const nodeWidths = new Map<string, number>();
   for (const nodeId of nodeIds) {
     const node = nodeMap.get(nodeId)!;
+    const width = getNodeWidth(node.name);
+    nodeWidths.set(nodeId, width);
     g.setNode(nodeId, {
       label: node.name,
-      width: NODE_WIDTH,
+      width,
       height: NODE_HEIGHT,
     });
   }
@@ -124,7 +135,7 @@ function layoutComponent(
       ...node,
       x: layoutNode.x,
       y: layoutNode.y,
-      width: NODE_WIDTH,
+      width: nodeWidths.get(nodeId) ?? MIN_NODE_WIDTH,
       height: NODE_HEIGHT,
     });
   }

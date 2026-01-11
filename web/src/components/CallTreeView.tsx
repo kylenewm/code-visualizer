@@ -16,6 +16,34 @@ function getFileName(filePath: string): string {
   return filePath.split('/').pop() || filePath;
 }
 
+/** Source preview with expand/collapse */
+function SourcePreview({ source, description }: { source: string; description?: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const lines = source.split('\n');
+  const hasMore = lines.length > 5;
+  const displaySource = isExpanded ? source : lines.slice(0, 5).join('\n') + (hasMore ? '\n  // ...' : '');
+
+  return (
+    <div className="tree-source">
+      {description && (
+        <p className="tree-description">{description}</p>
+      )}
+      <pre><code>{displaySource}</code></pre>
+      {hasMore && (
+        <button
+          className="source-expand-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsExpanded(!isExpanded);
+          }}
+        >
+          {isExpanded ? '▲ Show less' : '▼ Show more'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** TreeNode component - renders a single node and its children */
 function TreeNodeView({
   treeNode,
@@ -74,12 +102,7 @@ function TreeNodeView({
 
       {/* Source preview (always shown for depth 0, or when expanded) */}
       {(depth === 0 || isExpanded) && node.sourcePreview && (
-        <div className="tree-source">
-          {node.description && (
-            <p className="tree-description">{node.description}</p>
-          )}
-          <pre><code>{node.sourcePreview}</code></pre>
-        </div>
+        <SourcePreview source={node.sourcePreview} description={node.description} />
       )}
 
       {/* Children */}

@@ -110,6 +110,30 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     return layoutGraph(filteredNodes, filteredEdges, { rankdir: 'TB' });
   }, [nodes, edges, searchQuery, focusMode, selectedNodeId, focusDepth, getNeighbors]);
 
+  // Compute file -> color mapping for legend
+  const fileColors = useMemo(() => {
+    const colors = [
+      '#3b82f6', // blue
+      '#10b981', // green
+      '#f59e0b', // amber
+      '#ef4444', // red
+      '#8b5cf6', // purple
+      '#06b6d4', // cyan
+      '#f97316', // orange
+      '#ec4899', // pink
+    ];
+    const map = new Map<string, string>();
+    let colorIndex = 0;
+    for (const node of layout.nodes) {
+      const fileName = node.filePath.split('/').pop() || 'unknown';
+      if (!map.has(fileName)) {
+        map.set(fileName, colors[colorIndex % colors.length]);
+        colorIndex++;
+      }
+    }
+    return Array.from(map.entries());
+  }, [layout.nodes]);
+
   // Zoom controls
   const zoomIn = useCallback(() => {
     if (svgRef.current && zoomRef.current) {
@@ -254,53 +278,71 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       .attr('d', 'M0,-5L10,0L0,5')
       .attr('fill', COLORS.importEdge);
 
-    // Group nodes by file for background rectangles
+    // Build file -> color mapping for group backgrounds and node borders
+    const fileColorMap = new Map<string, string>();
+    const fileColors = [
+      '#3b82f6', // blue
+      '#10b981', // green
+      '#f59e0b', // amber
+      '#ef4444', // red
+      '#8b5cf6', // purple
+      '#06b6d4', // cyan
+      '#f97316', // orange
+      '#ec4899', // pink
+    ];
+    let fileColorIndex = 0;
+
+    // Group nodes by file
     const fileGroups = new Map<string, LayoutNode[]>();
     for (const node of layout.nodes) {
       const fileName = node.filePath.split('/').pop() || 'unknown';
+      if (!fileColorMap.has(fileName)) {
+        fileColorMap.set(fileName, fileColors[fileColorIndex % fileColors.length]);
+        fileColorIndex++;
+      }
       if (!fileGroups.has(fileName)) {
         fileGroups.set(fileName, []);
       }
       fileGroups.get(fileName)!.push(node);
     }
 
-    // Draw file group backgrounds (only if multiple files)
+    // Draw file group backgrounds with better contrast
     if (fileGroups.size > 1 && fileGroups.size <= 20) {
       const groupBgLayer = g.append('g').attr('class', 'file-groups');
-      const groupColors = ['#1e3a5f', '#2d1f3d', '#1f2d2d', '#3d2d1f', '#1f1f3d'];
 
-      let colorIndex = 0;
       for (const [fileName, groupNodes] of fileGroups) {
-        if (groupNodes.length < 2) continue; // Skip single-node groups
+        if (groupNodes.length < 1) continue;
 
+        const color = fileColorMap.get(fileName) || '#475569';
         const xs = groupNodes.map((n) => n.x);
         const ys = groupNodes.map((n) => n.y);
-        const minX = Math.min(...xs) - 100;
-        const maxX = Math.max(...xs) + 100;
-        const minY = Math.min(...ys) - 60;
-        const maxY = Math.max(...ys) + 60;
+        const minX = Math.min(...xs) - 90;
+        const maxX = Math.max(...xs) + 90;
+        const minY = Math.min(...ys) - 50;
+        const maxY = Math.max(...ys) + 50;
 
+        // Background rectangle - more visible
         groupBgLayer.append('rect')
           .attr('x', minX)
           .attr('y', minY)
           .attr('width', maxX - minX)
           .attr('height', maxY - minY)
-          .attr('rx', 12)
-          .attr('fill', groupColors[colorIndex % groupColors.length])
-          .attr('opacity', 0.3)
-          .attr('stroke', groupColors[colorIndex % groupColors.length])
-          .attr('stroke-width', 1)
-          .attr('stroke-opacity', 0.5);
+          .attr('rx', 8)
+          .attr('fill', color)
+          .attr('opacity', 0.12)
+          .attr('stroke', color)
+          .attr('stroke-width', 2)
+          .attr('stroke-opacity', 0.6);
 
+        // File name label - prominent
         groupBgLayer.append('text')
-          .attr('x', minX + 8)
-          .attr('y', minY + 16)
-          .attr('fill', '#94a3b8')
-          .attr('font-size', '11px')
-          .attr('font-weight', 500)
+          .attr('x', minX + 10)
+          .attr('y', minY + 18)
+          .attr('fill', color)
+          .attr('font-size', '12px')
+          .attr('font-weight', 600)
+          .attr('opacity', 0.9)
           .text(fileName);
-
-        colorIndex++;
       }
     }
 
@@ -416,12 +458,14 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       .attr('stroke', (d: LayoutNode) => {
         if (d.id === selectedNodeId) return '#fbbf24';
         if (connectedNodeIds.has(d.id) && d.id !== selectedNodeId) return '#f59e0b';
-        return '#1e293b';
+        // Use file-based color for unselected nodes
+        const fileName = d.filePath.split('/').pop() || 'unknown';
+        return fileColorMap.get(fileName) || '#475569';
       })
       .attr('stroke-width', (d: LayoutNode) => {
         if (d.id === selectedNodeId) return 3;
         if (connectedNodeIds.has(d.id)) return 2;
-        return 1;
+        return 2; // Thicker default stroke to show file color
       });
 
     // Node label (hidden at low zoom)
@@ -542,25 +586,28 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         </button>
         {legendExpanded && (
           <div className="legend-content">
-            <div className="legend-item">
-              <span className="legend-color" style={{ background: '#22c55e' }} />
-              <span>Callers</span>
+            <div className="legend-section">
+              <div className="legend-section-title">Edges</div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#22c55e' }} />
+                <span>Callers</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#f59e0b' }} />
+                <span>Calls</span>
+              </div>
             </div>
-            <div className="legend-item">
-              <span className="legend-color" style={{ background: '#f59e0b' }} />
-              <span>Calls</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-color" style={{ background: '#3b82f6' }} />
-              <span>Function</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-color" style={{ background: '#8b5cf6' }} />
-              <span>Method</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-color" style={{ background: '#10b981' }} />
-              <span>Class</span>
+            <div className="legend-section">
+              <div className="legend-section-title">Files (border)</div>
+              {fileColors.slice(0, 8).map(([fileName, color]) => (
+                <div key={fileName} className="legend-item">
+                  <span className="legend-color" style={{ background: color }} />
+                  <span>{fileName}</span>
+                </div>
+              ))}
+              {fileColors.length > 8 && (
+                <div className="legend-item muted">+{fileColors.length - 8} more</div>
+              )}
             </div>
           </div>
         )}
