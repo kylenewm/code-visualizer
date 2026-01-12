@@ -566,6 +566,49 @@
 }
 
 /* Focus Mode Controls */
+/* Filter Controls - Show Changed Only */
+.filter-controls {
+  position: absolute;
+  bottom: 110px;
+  left: 16px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.95);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.filter-controls button {
+  padding: 6px 12px;
+  background: #334155;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-controls button:hover:not(:disabled) {
+  background: #475569;
+  border-color: #64748b;
+}
+
+.filter-controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.filter-controls button.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: white;
+}
+
 .focus-controls {
   position: absolute;
   bottom: 60px;

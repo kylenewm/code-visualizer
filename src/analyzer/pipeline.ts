@@ -64,10 +64,9 @@ export class AnalysisPipeline {
     const { resolved } = resolveLocalCalls(extraction);
     const extractTimeMs = performance.now() - startExtract;
 
-    // Add to graph with timestamp
-    const now = Date.now();
+    // Add to graph (without lastModified - only change-aggregator sets that on re-analysis)
     for (const node of extraction.nodes) {
-      this.graph.addNode({ ...node, lastModified: now });
+      this.graph.addNode(node);
     }
     for (const edge of [...extraction.edges, ...resolved]) {
       this.graph.addEdge(edge);
@@ -93,12 +92,11 @@ export class AnalysisPipeline {
     const extraction = extractFromAST(parseResult.tree.rootNode, filePath);
     const { resolved } = resolveLocalCalls(extraction);
 
-    // Clear old data for this file and add new with timestamp
+    // Clear old data for this file and add new
     this.graph.clearFile(filePath);
 
-    const now = Date.now();
     for (const node of extraction.nodes) {
-      this.graph.addNode({ ...node, lastModified: now });
+      this.graph.addNode(node);
     }
     for (const edge of [...extraction.edges, ...resolved]) {
       this.graph.addEdge(edge);

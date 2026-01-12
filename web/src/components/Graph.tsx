@@ -44,6 +44,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     nodeId: string;
   } | null>(null);
   const [legendExpanded, setLegendExpanded] = useState(false);
+  const [showChangedOnly, setShowChangedOnly] = useState(false);
 
   const nodes = useGraphStore((s) => s.nodes);
   const edges = useGraphStore((s) => s.edges);
@@ -79,6 +80,53 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     return neighbors;
   }, [edges]);
 
+  // Get changed nodes (modified in last 5 minutes) and their direct neighbors
+  const getChangedNodesWithNeighbors = useCallback((): Set<string> => {
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    const changedIds = new Set<string>();
+
+    // Find recently changed nodes
+    for (const node of nodes) {
+      if (node.lastModified && node.lastModified > fiveMinutesAgo) {
+        changedIds.add(node.id);
+      }
+    }
+
+    // If no changed nodes, return empty set
+    if (changedIds.size === 0) return changedIds;
+
+    // Add direct neighbors (1 level: callers and callees)
+    const withNeighbors = new Set<string>(changedIds);
+    for (const edge of edges) {
+      if (changedIds.has(edge.source)) {
+        withNeighbors.add(edge.target);
+      }
+      if (changedIds.has(edge.target)) {
+        withNeighbors.add(edge.source);
+      }
+    }
+
+    return withNeighbors;
+  }, [nodes, edges]);
+
+  // Count changed nodes for UI feedback
+  const changedNodeCount = useMemo(() => {
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    return nodes.filter(n => n.lastModified && n.lastModified > fiveMinutesAgo).length;
+  }, [nodes]);
+
+  // Track if we've auto-focused on changed nodes (prevent re-triggering)
+  const hasAutoFocusedRef = useRef(false);
+
+  // Auto-focus on changed code when entering Graph view with recent changes
+  useEffect(() => {
+    // Only auto-focus once when graph first loads with changed nodes
+    if (!hasAutoFocusedRef.current && changedNodeCount > 0 && nodes.length > 0) {
+      setShowChangedOnly(true);
+      hasAutoFocusedRef.current = true;
+    }
+  }, [changedNodeCount, nodes.length]);
+
   // Filter and layout nodes
   const layout = useMemo(() => {
     let filteredNodes = nodes;
@@ -98,6 +146,17 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       );
     }
 
+    // Show changed only mode: filter to changed nodes + direct neighbors
+    if (showChangedOnly) {
+      const changedWithNeighbors = getChangedNodesWithNeighbors();
+      if (changedWithNeighbors.size > 0) {
+        filteredNodes = filteredNodes.filter((n) => changedWithNeighbors.has(n.id));
+        filteredEdges = filteredEdges.filter(
+          (e) => changedWithNeighbors.has(e.source) && changedWithNeighbors.has(e.target)
+        );
+      }
+    }
+
     // Focus mode: only show neighbors
     if (focusMode && selectedNodeId) {
       const neighbors = getNeighbors(selectedNodeId, focusDepth);
@@ -108,7 +167,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     }
 
     return layoutGraph(filteredNodes, filteredEdges, { rankdir: 'TB' });
-  }, [nodes, edges, searchQuery, focusMode, selectedNodeId, focusDepth, getNeighbors]);
+  }, [nodes, edges, searchQuery, showChangedOnly, getChangedNodesWithNeighbors, focusMode, selectedNodeId, focusDepth, getNeighbors]);
 
   // Compute file -> color mapping for legend
   const fileColors = useMemo(() => {
@@ -478,9 +537,19 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       .attr('fill', 'white')
       .attr('font-size', '11px')
       .attr('font-weight', 500)
-      .text((d: LayoutNode) =>
-        d.name.length > 18 ? d.name.slice(0, 16) + '...' : d.name
-      );
+      .text((d: LayoutNode) => {
+        // Calculate max chars based on node width (matches dagre-layout calculation)
+        const CHAR_WIDTH = 7; // Slightly less than layout's 8px for visual safety
+        const PADDING = 16; // Text padding inside node
+        const availableWidth = d.width - PADDING;
+        const maxChars = Math.floor(availableWidth / CHAR_WIDTH);
+
+        if (d.name.length <= maxChars) {
+          return d.name;
+        }
+        // Truncate with ellipsis
+        return d.name.slice(0, maxChars - 1) + '…';
+      });
 
     // Hover tooltip (shows full name + stats)
     // Use layout.edges to avoid stale closure with edges from store
@@ -551,6 +620,18 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         <button onClick={fitToScreen} title="Fit to Screen">⊡</button>
         <button onClick={resetZoom} title="Reset Zoom">↺</button>
         <span className="zoom-level">{Math.round(currentZoom * 100)}%</span>
+      </div>
+
+      {/* Filter Controls */}
+      <div className="filter-controls">
+        <button
+          onClick={() => setShowChangedOnly(!showChangedOnly)}
+          className={showChangedOnly ? 'active' : ''}
+          disabled={changedNodeCount === 0}
+          title={showChangedOnly ? 'Show all nodes' : 'Show only changed code + callers/callees'}
+        >
+          {showChangedOnly ? '🔄 Show All' : `⚡ Changed (${changedNodeCount})`}
+        </button>
       </div>
 
       {/* Focus Mode Controls */}

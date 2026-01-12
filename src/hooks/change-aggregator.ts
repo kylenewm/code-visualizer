@@ -342,9 +342,10 @@ export class ChangeAggregator extends EventEmitter {
         const analysisResult = await this.pipeline.analyzeFile(filePath);
 
         if (this.graph) {
-          // Update graph with new nodes and edges
+          // Update graph with new nodes and edges (with lastModified timestamp)
+          const now = Date.now();
           for (const node of analysisResult.nodes) {
-            this.graph.addNode(node);
+            this.graph.addNode({ ...node, lastModified: now });
           }
           for (const edge of analysisResult.edges) {
             this.graph.addEdge(edge);
