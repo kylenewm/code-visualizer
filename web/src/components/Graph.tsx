@@ -483,10 +483,11 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       );
 
     // Hover tooltip (shows full name + stats)
+    // Use layout.edges to avoid stale closure with edges from store
     nodeElements.append('title')
       .text((d: LayoutNode) => {
-        const callerCount = edges.filter(e => e.target === d.id).length;
-        const calleeCount = edges.filter(e => e.source === d.id).length;
+        const callerCount = layout.edges.filter(e => e.target === d.id).length;
+        const calleeCount = layout.edges.filter(e => e.source === d.id).length;
         return `${d.name}\n${d.kind} · ${callerCount} callers · ${calleeCount} calls`;
       });
 

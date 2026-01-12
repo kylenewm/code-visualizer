@@ -67,11 +67,43 @@ npm run test:fixtures      # Test with known call graph projects
 ## Slash Commands
 | Command | What |
 |---------|------|
-| /test | Run tests and check analysis pipeline |
-| /done | Mark current task complete, update STATE.md |
-| /review | Check invariants compliance and performance targets |
-| /ship | Package for release, verify all success criteria |
-| /save | Commit current progress to LOG.md |
+| /test | Run vitest tests |
+| /test-cycle | Generate + run tests progressively |
+| /done | Verify before marking complete |
+| /review | Spawn review subagent |
+| /ship | Test → commit → push → PR |
+| /save | Update STATE.md + LOG.md |
+| /commit | Stage and commit changes |
+| /summarize | AI explain changes |
+
+## Subagents
+
+| Agent | Purpose | When to Use |
+|-------|---------|-------------|
+| `code-architect` | Design before implementing | New features, architectural changes |
+| `verify-app` | Test implementation works | After implementing, before declaring done |
+| `code-simplifier` | Reduce complexity | After feature complete, code feels bloated |
+| `build-validator` | Check deployment readiness | Before releases |
+| `oncall-guide` | Debug production issues | When investigating errors |
+
+**How to invoke:** Ask Claude to "use code-architect to design this" or "spawn verify-app to test"
+
+## Workflow (Boris-Style)
+
+For non-trivial tasks:
+
+```
+1. Think        → Use plan mode or code-architect for design
+2. Implement    → Write the code
+3. Verify       → Run /test or spawn verify-app
+4. Simplify     → Optional: spawn code-simplifier if complex
+5. Review       → Run /review (fresh eyes from subagent)
+6. Ship         → Run /ship (test → commit → push → PR)
+```
+
+**Shortcuts for simple tasks:**
+- Bug fix: implement → /test → /done → /commit
+- Docs update: edit → /commit
 
 ## Key Files
 - `src/hooks/adapter.ts` - Claude integration interface
@@ -84,6 +116,10 @@ npm run test:fixtures      # Test with known call graph projects
 - `web/src/lib/dagre-layout.ts` - Position-cached layout engine
 - `.codeflowrc` - Privacy and retention configuration
 
-## Context
-- STATE.md: Current work progress and next tasks
-- LOG.md: Implementation history and decision log
+## Context Files
+| File | Purpose |
+|------|---------|
+| STATE.md | Current work, decisions |
+| LOG.md | History (append-only) |
+
+Long conversation → run `/save`

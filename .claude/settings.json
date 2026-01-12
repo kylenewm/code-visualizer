@@ -1,8 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pytest *)",
-      "Bash(python *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(vitest *)",
+      "Bash(tsx *)",
+      "Bash(tsc *)",
+      "Bash(eslint *)",
+      "Bash(prettier *)",
+      "Bash(playwright *)",
       "Bash(git status)",
       "Bash(git diff *)",
       "Bash(git log *)",
@@ -12,6 +18,28 @@
     ]
   },
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx prettier --write $CLAUDE_FILE_PATHS 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.council/scripts/rich-notify.sh 2>/dev/null || osascript -e 'display notification \"Claude finished\" with title \"Claude Code\"'"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
         "matcher": "",

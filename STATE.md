@@ -160,6 +160,29 @@ Replace 135-node function graph with module-level architecture view (5-15 boxes)
 ## In Progress
 None
 
+## Recent: Autonomous Evaluation Session (2026-01-12)
+
+Ran autonomous browser-based evaluation using Playwright MCP tools.
+
+**Issues Fixed:**
+- [x] Function name truncation in sidebar (word-break: break-all → overflow-wrap)
+- [x] Silent API failures in ArchitectureView (added error/loading states + retry)
+- [x] No WebSocket disconnect feedback (added prominent orange banner)
+- [x] Stale closure in Graph.tsx D3 tooltip (edges → layout.edges)
+
+**Issues Identified (Not Yet Fixed):**
+- Session persistence churn (Set reference changes trigger saves)
+- ChangeFeed function lookup by name only (could match wrong function)
+- BFS algorithm in store.ts could be slow on large graphs
+- No loading state in CallTreeView for deep trees
+- Hardcoded API URLs (localhost:3001)
+
+**Usability Findings (Positive):**
+- Tool IS useful for answering code questions
+- Search is fast and effective across languages
+- Finding callers/callees: 1-2 clicks
+- Call chain visualization works well
+
 ## Recently Completed (Test Harness)
 - [x] Created e2e fixture project (`test/fixtures/e2e-project/app.ts`)
   - Single-file app with known call graph

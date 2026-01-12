@@ -3,7 +3,7 @@
  * Shows module-level overview with drill-down to files and functions
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGraphStore, type ModuleNode, type GraphNode } from '../lib/store';
 
 const API_BASE = 'http://localhost:3001/api';
@@ -120,6 +120,9 @@ export function ArchitectureView() {
   const nodes = useGraphStore((s) => s.nodes);
   const isConnected = useGraphStore((s) => s.isConnected);
 
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
   // Expand/collapse all handlers
   const handleExpandAll = () => {
     if (!moduleGraph) return;
@@ -139,24 +142,31 @@ export function ArchitectureView() {
     setExpandedFiles(new Set());
   };
 
-  // Fetch module graph on mount, when connection changes, or when nodes update
+  // Fetch module graph
+  const fetchModuleGraph = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/modules`);
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json();
+      setModuleGraph(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load modules';
+      setError(message);
+      console.error('Failed to fetch module graph:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch on mount and when connection changes
   useEffect(() => {
     if (!isConnected) return;
-
-    const fetchModuleGraph = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/modules`);
-        if (res.ok) {
-          const data = await res.json();
-          setModuleGraph(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch module graph:', err);
-      }
-    };
-
     fetchModuleGraph();
-  }, [isConnected, setModuleGraph, nodes.length]);
+  }, [isConnected, setModuleGraph]);
 
   // Build file -> nodes mapping
   const fileNodesMap = useMemo(() => {
@@ -194,6 +204,45 @@ export function ArchitectureView() {
           <div className="empty-icon">📦</div>
           <h3>Connecting...</h3>
           <p>Waiting for connection to analysis server</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="architecture-view">
+        <div className="architecture-empty">
+          <div className="empty-icon">⚠️</div>
+          <h3>Failed to load architecture</h3>
+          <p>{error}</p>
+          <button
+            onClick={fetchModuleGraph}
+            style={{
+              marginTop: '16px',
+              padding: '8px 16px',
+              background: '#3b82f6',
+              border: 'none',
+              borderRadius: '6px',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading && !moduleGraph) {
+    return (
+      <div className="architecture-view">
+        <div className="architecture-empty">
+          <div className="empty-icon">⏳</div>
+          <h3>Loading...</h3>
+          <p>Fetching module architecture</p>
         </div>
       </div>
     );

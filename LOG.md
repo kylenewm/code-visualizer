@@ -4,6 +4,58 @@
 
 ---
 
+## 2026-01-12
+
+### Autonomous Evaluation & Bug Fixes
+
+Ran full autonomous evaluation session using Playwright MCP browser tools. Spawned 3 parallel agents for different evaluation aspects.
+
+**Evaluation Process:**
+1. Started backend + frontend servers in background
+2. Used Playwright to navigate and interact with the app
+3. Agent 1: UI/visual quality across all 4 views
+4. Agent 2: Usefulness for answering code questions
+5. Agent 3: Code review of frontend codebase
+
+**Issues Fixed:**
+
+1. **Function name truncation in sidebar** (`App.css:275`)
+   - Problem: `word-break: break-all` was splitting "handleRequest" as "handleReque" + "st"
+   - Fix: Changed to `overflow-wrap: break-word; word-break: normal;`
+
+2. **Silent API failures in ArchitectureView** (`ArchitectureView.tsx`)
+   - Problem: Non-ok responses silently failed, no error shown to user
+   - Fix: Added `error` and `isLoading` states, retry button, error message display
+
+3. **No WebSocket disconnect feedback** (`App.tsx`, `App.css`)
+   - Problem: User didn't know when data was stale
+   - Fix: Added prominent orange pulsing banner: "Connection lost - data may be stale. Reconnecting..."
+
+4. **Stale closure in Graph.tsx D3 tooltip** (`Graph.tsx:488-490`)
+   - Problem: Tooltip used `edges` from store directly inside D3 effect without it in deps
+   - Fix: Changed `edges.filter()` to `layout.edges.filter()` (layout is in deps)
+
+**Usability Findings (Positive):**
+- Tool genuinely useful for code understanding
+- Search excellent - fast incremental across languages
+- 1-2 clicks to find callers/callees
+- Call chain visualization works well with depth control
+
+**Issues Identified (Not Fixed):**
+- Session persistence churn (Set references change on every toggle)
+- ChangeFeed function lookup by name could match wrong function
+- BFS in store.ts could be slow on large graphs
+- No loading state in CallTreeView for deep trees
+- Hardcoded API URLs won't work in production
+
+**Files Modified:**
+- `web/src/App.css` - Sidebar truncation fix, disconnect banner styles
+- `web/src/App.tsx` - Disconnect banner component
+- `web/src/components/ArchitectureView.tsx` - Error/loading states with retry
+- `web/src/components/Graph.tsx` - Stale closure fix
+
+---
+
 ## 2026-01-11
 
 ### Source Preview Expand/Collapse + Dynamic Node Width

@@ -23,6 +23,9 @@ function App() {
   // View mode state - Architecture is the default (v2)
   const [viewMode, setViewMode] = useState<ViewMode>('architecture');
 
+  // Connection state for disconnect banner
+  const isConnected = useGraphStore((s) => s.isConnected);
+
   // Get drill-down state from store
   const requestedView = useGraphStore((s) => s.requestedView);
   const clearRequestedView = useGraphStore((s) => s.clearRequestedView);
@@ -88,6 +91,14 @@ function App() {
         </div>
         <SearchBar ref={searchInputRef} />
       </header>
+
+      {/* Disconnection Banner */}
+      {!isConnected && (
+        <div className="disconnect-banner">
+          <span className="disconnect-icon">⚠️</span>
+          <span>Connection lost - data may be stale. Reconnecting...</span>
+        </div>
+      )}
 
       <main className="app-main">
         <div className="main-panel">
