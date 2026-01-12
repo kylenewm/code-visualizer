@@ -23,13 +23,17 @@ export function NodeDetails() {
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const getNode = useGraphStore((s) => s.getNode);
   const getCallees = useGraphStore((s) => s.getCallees);
+  const getCallers = useGraphStore((s) => s.getCallers);
   const getCallChainTo = useGraphStore((s) => s.getCallChainTo);
+  const getImpact = useGraphStore((s) => s.getImpact);
   const navigateToNode = useGraphStore((s) => s.navigateToNode);
   const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
 
   const node = selectedNodeId ? getNode(selectedNodeId) : null;
   const callees = selectedNodeId ? getCallees(selectedNodeId) : [];
+  const directCallers = selectedNodeId ? getCallers(selectedNodeId) : [];
   const callChains = selectedNodeId ? getCallChainTo(selectedNodeId) : [];
+  const impact = selectedNodeId ? getImpact(selectedNodeId) : { callers: [], depth: new Map() };
 
   if (!node) {
     return (
@@ -141,6 +145,61 @@ export function NodeDetails() {
           <pre className="source-preview"><code>{node.sourcePreview}</code></pre>
         ) : (
           <p className="muted">No source preview available</p>
+        )}
+      </section>
+
+      {/* IMPACT ANALYSIS */}
+      <section className="flow-section impact-section">
+        <h3 className="flow-header">
+          <span className="flow-icon">⚡</span>
+          Impact Analysis
+        </h3>
+        {impact.callers.length > 0 ? (
+          <>
+            <div className="impact-summary">
+              <div className="impact-stat impact-warning">
+                <span className="impact-number">{impact.callers.length}</span>
+                <span className="impact-label">functions affected</span>
+              </div>
+              <div className="impact-stat">
+                <span className="impact-number">{directCallers.length}</span>
+                <span className="impact-label">direct callers</span>
+              </div>
+              <div className="impact-stat">
+                <span className="impact-number">{impact.callers.length - directCallers.length}</span>
+                <span className="impact-label">indirect</span>
+              </div>
+            </div>
+            <details className="impact-details">
+              <summary>View affected functions</summary>
+              <ul className="impact-list">
+                {impact.callers.slice(0, 20).map((caller) => {
+                  const depth = impact.depth.get(caller.id) || 0;
+                  return (
+                    <li
+                      key={caller.id}
+                      onClick={() => navigateToNode(caller.id)}
+                      className="clickable impact-item"
+                    >
+                      <span className={`depth-badge depth-${Math.min(depth, 3)}`}>
+                        {depth === 1 ? 'direct' : `+${depth}`}
+                      </span>
+                      <span className={`kind-dot ${caller.kind}`} />
+                      <span className="impact-name">{caller.name}</span>
+                      <span className="impact-file">{caller.filePath.split('/').pop()}</span>
+                    </li>
+                  );
+                })}
+                {impact.callers.length > 20 && (
+                  <li className="impact-more">
+                    ... and {impact.callers.length - 20} more
+                  </li>
+                )}
+              </ul>
+            </details>
+          </>
+        ) : (
+          <p className="muted impact-safe">No callers - changes here are isolated</p>
         )}
       </section>
 

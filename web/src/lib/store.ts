@@ -160,6 +160,8 @@ interface GraphStore {
   getCallTree: (nodeId: string, maxDepth?: number) => CallTreeNode | null;
   /** Get entry points (exported functions with no callers) */
   getEntryPoints: () => GraphNode[];
+  /** Get all callers transitively - impact analysis */
+  getImpact: (nodeId: string, maxDepth?: number) => { callers: GraphNode[]; depth: Map<string, number> };
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -445,5 +447,55 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       n.exported &&
       !calledNodeIds.has(n.id)
     );
+  },
+
+  getImpact: (nodeId, maxDepth = 10) => {
+    const { nodes, edges } = get();
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // Build reverse adjacency (who calls what)
+    const callerMap = new Map<string, Set<string>>();
+    for (const edge of edges) {
+      if (edge.type === 'calls' || edge.type === 'instantiates') {
+        if (!callerMap.has(edge.target)) {
+          callerMap.set(edge.target, new Set());
+        }
+        callerMap.get(edge.target)!.add(edge.source);
+      }
+    }
+
+    // BFS to find all transitive callers
+    const visited = new Set<string>();
+    const depthMap = new Map<string, number>();
+    const queue: { id: string; depth: number }[] = [];
+
+    // Start from direct callers
+    const directCallers = callerMap.get(nodeId) || new Set();
+    for (const callerId of directCallers) {
+      queue.push({ id: callerId, depth: 1 });
+    }
+
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift()!;
+      if (visited.has(id) || depth > maxDepth) continue;
+      visited.add(id);
+      depthMap.set(id, depth);
+
+      // Add this node's callers to queue
+      const callers = callerMap.get(id) || new Set();
+      for (const callerId of callers) {
+        if (!visited.has(callerId)) {
+          queue.push({ id: callerId, depth: depth + 1 });
+        }
+      }
+    }
+
+    // Convert to nodes
+    const callers = Array.from(visited)
+      .map(id => nodeMap.get(id))
+      .filter((n): n is GraphNode => n !== undefined)
+      .sort((a, b) => (depthMap.get(a.id) || 0) - (depthMap.get(b.id) || 0));
+
+    return { callers, depth: depthMap };
   },
 }));

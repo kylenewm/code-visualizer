@@ -1256,6 +1256,128 @@
   font-style: italic;
 }
 
+/* Impact Analysis Section */
+.impact-section {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.05), rgba(239, 68, 68, 0.05));
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.impact-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.impact-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 6px;
+  min-width: 60px;
+}
+
+.impact-stat.impact-warning .impact-number {
+  color: #fb923c;
+}
+
+.impact-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.impact-label {
+  font-size: 10px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.impact-details summary {
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.impact-details summary:hover {
+  color: #e2e8f0;
+}
+
+.impact-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.impact-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.impact-item:hover {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.depth-badge {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  min-width: 36px;
+  text-align: center;
+}
+
+.depth-badge.depth-1 {
+  background: #fb923c;
+  color: #1e293b;
+}
+
+.depth-badge.depth-2 {
+  background: #f97316;
+  color: #1e293b;
+}
+
+.depth-badge.depth-3 {
+  background: #ea580c;
+  color: white;
+}
+
+.impact-name {
+  flex: 1;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.impact-file {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.impact-more {
+  padding: 8px;
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.impact-safe {
+  color: #4ade80 !important;
+  font-weight: 500;
+}
+
 /* Properties section (collapsed by default) */
 .properties-section {
   margin-top: 1rem;
