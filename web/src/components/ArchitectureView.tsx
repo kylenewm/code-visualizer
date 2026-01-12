@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useGraphStore, type ModuleNode, type GraphNode } from '../lib/store';
+import { ModuleDiagram } from './ModuleDiagram';
 
 const API_BASE = 'http://localhost:3001/api';
 
@@ -38,7 +39,10 @@ function ModuleCard({
   children?: React.ReactNode;
 }) {
   return (
-    <div className={`architecture-module ${module.recentlyChanged ? 'changed' : ''}`}>
+    <div
+      className={`architecture-module ${module.recentlyChanged ? 'changed' : ''}`}
+      data-module-id={module.id}
+    >
       <div className="module-header" onClick={onToggle}>
         <div className="module-expand">{isExpanded ? '▼' : '▶'}</div>
         <div className="module-info">
@@ -260,6 +264,18 @@ export function ArchitectureView() {
     );
   }
 
+  // Handle clicking a module in the diagram - expand it
+  const handleModuleClick = (moduleId: string) => {
+    if (!expandedModules.has(moduleId)) {
+      toggleModuleExpanded(moduleId);
+    }
+    // Scroll to the module in the tree
+    const element = document.querySelector(`[data-module-id="${moduleId}"]`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   return (
     <div className="architecture-view">
       <header className="architecture-header">
@@ -274,6 +290,12 @@ export function ArchitectureView() {
           <button onClick={handleCollapseAll}>Collapse All</button>
         </div>
       </header>
+
+      {/* Module dependency diagram */}
+      <ModuleDiagram
+        moduleGraph={moduleGraph}
+        onModuleClick={handleModuleClick}
+      />
 
       <div className="architecture-content">
         {Array.from(groupedModules.entries()).map(([parentPath, modules]) => (

@@ -2191,6 +2191,49 @@
   font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
+/* Module Dependency Diagram */
+.module-diagram {
+  padding: 16px;
+  border-bottom: 1px solid #1e293b;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.3), rgba(15, 23, 42, 0.5));
+}
+
+.module-diagram h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin: 0 0 12px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.diagram-container {
+  overflow-x: auto;
+  padding: 8px 0;
+}
+
+.diagram-container svg {
+  display: block;
+  min-width: 100%;
+}
+
+.module-box {
+  transition: all 0.15s ease;
+}
+
+.module-box:hover rect {
+  filter: brightness(1.1);
+}
+
+.module-box text {
+  pointer-events: none;
+  user-select: none;
+}
+
+.diagram-edges path {
+  transition: all 0.15s ease;
+}
+
 /* Dependencies section */
 .architecture-edges {
   padding: 16px;

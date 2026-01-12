@@ -14,10 +14,10 @@ import type { FileChangeEvent } from './adapter.js';
 export interface FileWatcherConfig {
   /** Root directory to watch */
   rootDir: string;
-  /** File patterns to include (glob patterns) */
-  includePatterns: string[];
-  /** File patterns to ignore (glob patterns) */
-  ignorePatterns: string[];
+  /** File extensions to include (e.g., ['.ts', '.tsx', '.js', '.jsx', '.py']) */
+  includeExtensions: string[];
+  /** Directory names to ignore (e.g., ['node_modules', '.git', 'dist']) */
+  ignoreDirs: string[];
   /** Debounce interval in ms (default: 500) */
   debounceMs: number;
   /** Use polling for network filesystems */
@@ -36,15 +36,8 @@ export class FileWatcher extends EventEmitter {
   constructor(config: Partial<FileWatcherConfig> & { rootDir: string }) {
     super();
     this.config = {
-      includePatterns: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py'],
-      ignorePatterns: [
-        '**/node_modules/**',
-        '**/.git/**',
-        '**/dist/**',
-        '**/build/**',
-        '**/*.log',
-        '**/.DS_Store',
-      ],
+      includeExtensions: ['.ts', '.tsx', '.js', '.jsx', '.py'],
+      ignoreDirs: ['node_modules', '.git', 'dist', 'build'],
       debounceMs: 500,
       usePolling: false,
       ...config,
@@ -52,19 +45,35 @@ export class FileWatcher extends EventEmitter {
   }
 
   /**
+   * Check if a file path should be included based on extension
+   */
+  private shouldInclude(filePath: string): boolean {
+    return this.config.includeExtensions.some((ext) => filePath.endsWith(ext));
+  }
+
+  /**
    * Start watching for file changes
+   * Note: We watch the root directory instead of glob patterns because
+   * chokidar's glob pattern watching doesn't reliably detect changes on macOS.
    */
   start(): void {
     if (this.watcher) {
       return; // Already watching
     }
 
-    const watchPatterns = this.config.includePatterns.map(
-      (p) => `${this.config.rootDir}/${p}`
+    // Build ignored regex from directory names
+    const ignoredPattern = new RegExp(
+      `(${this.config.ignoreDirs.map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`,
+      'i'
     );
 
-    this.watcher = watch(watchPatterns, {
-      ignored: this.config.ignorePatterns,
+    this.watcher = watch(this.config.rootDir, {
+      ignored: (path) => {
+        // Always ignore certain patterns
+        if (path.includes('/.') && !path.includes('/.env')) return true;
+        if (ignoredPattern.test(path)) return true;
+        return false;
+      },
       persistent: true,
       ignoreInitial: true,  // Don't emit events for existing files
       usePolling: this.config.usePolling,
@@ -102,6 +111,11 @@ export class FileWatcher extends EventEmitter {
    * Handle a file change with debouncing
    */
   private handleChange(type: 'create' | 'modify' | 'delete', filePath: string): void {
+    // Filter by extension - only process files we care about
+    if (!this.shouldInclude(filePath)) {
+      return;
+    }
+
     // Clear existing timer for this file
     const existingTimer = this.debounceTimers.get(filePath);
     if (existingTimer) {
