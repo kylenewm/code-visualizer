@@ -97,7 +97,7 @@ export function NodeDetails() {
             {callChains.slice(0, 2).map((chain, chainIdx) => (
               <div key={chainIdx} className="call-chain">
                 {chain.map((chainNode, idx) => (
-                  <span key={chainNode.id} className="chain-item">
+                  <span key={`${chainNode.id}-${idx}`} className="chain-item">
                     {idx > 0 && <span className="chain-arrow">→</span>}
                     <button
                       className={`chain-node ${chainNode.id === node.id ? 'current' : ''}`}

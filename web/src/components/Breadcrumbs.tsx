@@ -19,8 +19,8 @@ export function Breadcrumbs() {
     return { id: nodeId, name: node?.name ?? nodeId };
   });
 
-  // Add current selection
-  if (selectedNodeId) {
+  // Add current selection if not already the last item
+  if (selectedNodeId && items[items.length - 1]?.id !== selectedNodeId) {
     const currentNode = getNode(selectedNodeId);
     items.push({
       id: selectedNodeId,
@@ -55,7 +55,7 @@ export function Breadcrumbs() {
         const isClickable = !isLast;
 
         return (
-          <span key={item.id} className="breadcrumb-item-wrapper">
+          <span key={`${item.id}-${index}`} className="breadcrumb-item-wrapper">
             <span
               className={`breadcrumb-item ${isLast ? 'current' : ''} ${isClickable ? 'clickable' : ''}`}
               onClick={() => isClickable && navigateToNode(item.id)}
