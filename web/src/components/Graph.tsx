@@ -258,8 +258,8 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         setCurrentZoom(k);
 
         // Zoom-responsive visibility
-        // Hide labels below 40% zoom
-        g.selectAll('.node-label').style('opacity', k >= 0.4 ? 1 : 0);
+        // Hide labels below 20% zoom (was 40%)
+        g.selectAll('.node-label').style('opacity', k >= 0.2 ? 1 : 0);
 
         // Fade edges at low zoom
         const edgeOpacity = k < 0.3 ? 0 : k < 0.5 ? 0.2 : k < 0.7 ? 0.4 : 0.6;
@@ -328,57 +328,12 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     ];
     let fileColorIndex = 0;
 
-    // Group nodes by file
-    const fileGroups = new Map<string, LayoutNode[]>();
+    // Assign colors by file (node colors indicate file membership)
     for (const node of layout.nodes) {
       const fileName = node.filePath.split('/').pop() || 'unknown';
       if (!fileColorMap.has(fileName)) {
         fileColorMap.set(fileName, fileColors[fileColorIndex % fileColors.length]);
         fileColorIndex++;
-      }
-      if (!fileGroups.has(fileName)) {
-        fileGroups.set(fileName, []);
-      }
-      fileGroups.get(fileName)!.push(node);
-    }
-
-    // Draw file group backgrounds with better contrast
-    if (fileGroups.size > 1 && fileGroups.size <= 20) {
-      const groupBgLayer = g.append('g').attr('class', 'file-groups');
-
-      for (const [fileName, groupNodes] of fileGroups) {
-        if (groupNodes.length < 1) continue;
-
-        const color = fileColorMap.get(fileName) || '#475569';
-        const xs = groupNodes.map((n) => n.x);
-        const ys = groupNodes.map((n) => n.y);
-        const minX = Math.min(...xs) - 90;
-        const maxX = Math.max(...xs) + 90;
-        const minY = Math.min(...ys) - 50;
-        const maxY = Math.max(...ys) + 50;
-
-        // Border-only rectangle with dashed line (lighter visual weight)
-        groupBgLayer.append('rect')
-          .attr('x', minX)
-          .attr('y', minY)
-          .attr('width', maxX - minX)
-          .attr('height', maxY - minY)
-          .attr('rx', 8)
-          .attr('fill', 'none')
-          .attr('stroke', color)
-          .attr('stroke-width', 1.5)
-          .attr('stroke-opacity', 0.5)
-          .attr('stroke-dasharray', '6,3');
-
-        // File name label - positioned above the border
-        groupBgLayer.append('text')
-          .attr('x', minX + 8)
-          .attr('y', minY - 6)
-          .attr('fill', color)
-          .attr('font-size', '11px')
-          .attr('font-weight', 500)
-          .attr('opacity', 0.8)
-          .text(fileName);
       }
     }
 
