@@ -8,6 +8,7 @@
     "codeflow": "./dist/index.js"
   },
   "scripts": {
+    "postinstall": "cd web && npm install",
     "build": "tsc",
     "build:web": "cd web && npm run build",
     "dev": "tsx src/index.ts serve",

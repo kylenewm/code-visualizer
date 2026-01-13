@@ -8,8 +8,7 @@ Real-time code visualization for understanding how your codebase connects. See c
 # Clone and install
 git clone https://github.com/kylenewm/code-visualizer.git
 cd code-visualizer
-npm install
-cd web && npm install && cd ..
+npm install    # installs both backend and frontend
 
 # Start (analyzes current directory)
 npm run dev
