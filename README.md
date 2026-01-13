@@ -2,6 +2,8 @@
 
 Real-time code visualization for understanding how your codebase connects. See call graphs, trace execution flow, and watch changes as they happen.
 
+![CodeFlow Visualizer - Walkthrough View](docs/codeflow-walkthrough.png)
+
 ## Quick Start
 
 ```bash
