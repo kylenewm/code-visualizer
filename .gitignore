@@ -37,3 +37,13 @@ coverage/
 
 # tree-sitter build artifacts
 *.node
+
+# Internal docs (local only)
+PLAN.md
+LOG.md
+STATE.md
+.claude/
+
+# Test artifacts
+test-results/
+.playwright-mcp/
