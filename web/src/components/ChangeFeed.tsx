@@ -60,7 +60,7 @@ function ChangeCard({
     <div className={`change-card ${event.type}`}>
       <div className="change-card-header" onClick={hasExpandableContent ? onToggle : undefined}>
         {hasExpandableContent && (
-          <span className="change-expand">{isExpanded ? '▼' : '▶'}</span>
+          <span className={`change-expand ${isExpanded ? 'icon-chevron-down' : 'icon-chevron-right'}`} />
         )}
         <span className={`change-type-badge ${event.type}`}>
           {event.type === 'create' ? 'NEW' : event.type === 'delete' ? 'DEL' : 'MOD'}
@@ -165,8 +165,7 @@ export function ChangeFeed() {
     return (
       <div className="change-feed">
         <div className="change-feed-empty">
-          <div className="empty-icon">📝</div>
-          <h3>Connecting...</h3>
+                    <h3>Connecting...</h3>
           <p>Waiting for connection to analysis server</p>
         </div>
       </div>
@@ -180,8 +179,7 @@ export function ChangeFeed() {
           <h2>Change Feed</h2>
         </header>
         <div className="change-feed-empty">
-          <div className="empty-icon">📝</div>
-          <h3>No changes yet</h3>
+                    <h3>No changes yet</h3>
           <p>Changes will appear here as files are modified</p>
         </div>
       </div>

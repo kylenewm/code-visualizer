@@ -53,8 +53,7 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
     return (
       <div className="node-details">
         <div className="empty-state">
-          <div className="empty-state-icon">🔍</div>
-          <h3>Select a node to explore</h3>
+          <h3>Select a node</h3>
           <p>Click any function, method, or class in the graph to see its flow</p>
           <div className="empty-state-tips">
             <div className="tip"><kbd>/</kbd> Search nodes</div>
@@ -95,17 +94,14 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
             onClick={() => navigator.clipboard.writeText(`${node.filePath}:${node.location.startLine}`)}
             title="Copy path with line number"
           >
-            📋
+            <span className="icon-copy" />
           </button>
         </div>
       </section>
 
       {/* HOW WE GET HERE */}
       <section className="flow-section">
-        <h3 className="flow-header">
-          <span className="flow-icon">↓</span>
-          How We Get Here
-        </h3>
+        <h3 className="flow-header">How We Get Here</h3>
         {callChains.length > 0 && callChains[0].length > 1 ? (
           <div className="call-chains">
             {callChains.slice(0, 2).map((chain, chainIdx) => (
@@ -133,10 +129,7 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
 
       {/* WHAT IT DOES */}
       <section className="flow-section source-section">
-        <h3 className="flow-header">
-          <span className="flow-icon">◆</span>
-          What It Does
-        </h3>
+        <h3 className="flow-header">What It Does</h3>
 
         {node.description && (
           <p className="description-text">{node.description}</p>
@@ -150,7 +143,7 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
               onClick={() => navigator.clipboard.writeText(node.signature || '')}
               title="Copy signature"
             >
-              📋
+              <span className="icon-copy" />
             </button>
           </div>
         )}
@@ -164,10 +157,7 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
 
       {/* IMPACT ANALYSIS */}
       <section className="flow-section impact-section">
-        <h3 className="flow-header">
-          <span className="flow-icon">⚡</span>
-          Impact Analysis
-        </h3>
+        <h3 className="flow-header">Impact Analysis</h3>
         {impact.callers.length > 0 ? (
           <>
             <div className="impact-summary">
@@ -219,10 +209,7 @@ export function NodeDetails({ viewMode }: NodeDetailsProps) {
 
       {/* WHERE IT GOES */}
       <section className="flow-section">
-        <h3 className="flow-header">
-          <span className="flow-icon">↓</span>
-          Where It Goes ({callees.length})
-        </h3>
+        <h3 className="flow-header">Where It Goes ({callees.length})</h3>
         {callees.length > 0 ? (
           <ul className="node-list callees-list">
             {callees.map((callee) => (

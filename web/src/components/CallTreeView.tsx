@@ -37,7 +37,7 @@ function SourcePreview({ source, description }: { source: string; description?: 
             setIsExpanded(!isExpanded);
           }}
         >
-          {isExpanded ? '▲ Show less' : '▼ Show more'}
+          <span className={isExpanded ? 'icon-chevron-up' : 'icon-chevron-down'} /> {isExpanded ? 'Show less' : 'Show more'}
         </button>
       )}
     </div>
@@ -78,7 +78,7 @@ function TreeNodeView({
               onToggleExpand(node.id);
             }}
           >
-            {isExpanded ? '▼' : '▶'}
+            <span className={isExpanded ? 'icon-chevron-down' : 'icon-chevron-right'} />
           </button>
         ) : (
           <span className="tree-toggle-spacer" />
@@ -267,7 +267,6 @@ export function CallTreeView() {
     return (
       <div className="call-tree-view">
         <div className="call-tree-empty">
-          <div className="empty-icon">🌲</div>
           <h3>No code analyzed yet</h3>
           <p>Connect to see execution flow</p>
         </div>
@@ -285,7 +284,7 @@ export function CallTreeView() {
             onClick={() => requestView('architecture')}
             title="Back to Architecture"
           >
-            ← Architecture
+            ‹ Architecture
           </button>
           <h2>Execution Flow</h2>
         </div>
