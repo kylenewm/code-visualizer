@@ -9,11 +9,15 @@ import type { GraphHandle } from '../components/Graph';
 interface KeyboardShortcutsOptions {
   searchInputRef: RefObject<HTMLInputElement | null>;
   graphRef: RefObject<GraphHandle | null>;
+  onHelpRequest?: () => void;
+  onViewChange?: (view: 'architecture' | 'recent' | 'walkthrough' | 'graph') => void;
 }
 
 export function useKeyboardShortcuts({
   searchInputRef,
   graphRef,
+  onHelpRequest,
+  onViewChange,
 }: KeyboardShortcutsOptions) {
   const setSelectedNode = useGraphStore((s) => s.setSelectedNode);
   const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
@@ -92,12 +96,34 @@ export function useKeyboardShortcuts({
           }
           break;
 
-        case '1':
-        case '2':
-        case '3':
-          // Set focus depth (when in focus mode)
+        case '?':
+          // Show help/welcome modal
           event.preventDefault();
-          graphRef.current?.setFocusDepth(parseInt(event.key));
+          onHelpRequest?.();
+          break;
+
+        case '1':
+          // Switch to Architecture view
+          event.preventDefault();
+          onViewChange?.('architecture');
+          break;
+
+        case '2':
+          // Switch to Changes view
+          event.preventDefault();
+          onViewChange?.('recent');
+          break;
+
+        case '3':
+          // Switch to Walkthrough view
+          event.preventDefault();
+          onViewChange?.('walkthrough');
+          break;
+
+        case '4':
+          // Switch to Graph view
+          event.preventDefault();
+          onViewChange?.('graph');
           break;
       }
     }
@@ -111,5 +137,7 @@ export function useKeyboardShortcuts({
     setSearchQuery,
     navigateBack,
     navigationHistory.length,
+    onHelpRequest,
+    onViewChange,
   ]);
 }

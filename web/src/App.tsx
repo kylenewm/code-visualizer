@@ -13,6 +13,7 @@ import { Breadcrumbs } from './components/Breadcrumbs';
 import { ChangeFeed } from './components/ChangeFeed';
 import { CallTreeView } from './components/CallTreeView';
 import { ArchitectureView } from './components/ArchitectureView';
+import { WelcomeModal, useWelcomeModal } from './components/WelcomeModal';
 import { useKeyboardShortcuts } from './lib/keyboard';
 import { useSessionPersistence } from './lib/session';
 import './App.css';
@@ -22,6 +23,9 @@ type ViewMode = 'architecture' | 'recent' | 'walkthrough' | 'graph';
 function App() {
   // View mode state - Architecture is the default (v2)
   const [viewMode, setViewMode] = useState<ViewMode>('architecture');
+
+  // Welcome modal state
+  const { showWelcome, openWelcome, closeWelcome } = useWelcomeModal();
 
   // Connection state for disconnect banner
   const isConnected = useGraphStore((s) => s.isConnected);
@@ -52,6 +56,8 @@ function App() {
   useKeyboardShortcuts({
     searchInputRef,
     graphRef,
+    onHelpRequest: openWelcome,
+    onViewChange: setViewMode,
   });
 
   return (
@@ -59,6 +65,13 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1>CodeFlow Visualizer</h1>
+          <button
+            className="help-button"
+            onClick={openWelcome}
+            title="Help & Shortcuts (?)"
+          >
+            ?
+          </button>
           <Breadcrumbs />
         </div>
         <div className="header-center">
@@ -119,7 +132,11 @@ function App() {
         <kbd>/</kbd> Search
         <kbd>F</kbd> Focus
         <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> Views
+        <kbd>?</kbd> Help
       </div>
+
+      {/* Welcome Modal */}
+      {showWelcome && <WelcomeModal onClose={closeWelcome} />}
     </div>
   );
 }
