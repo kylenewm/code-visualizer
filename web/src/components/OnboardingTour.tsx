@@ -33,7 +33,8 @@ const tourSteps: Step[] = [
   {
     target: '.main-panel',
     content: 'Your workspace. The content here changes based on which view tab you select.',
-    placement: 'right',
+    placement: 'center',
+    disableScrolling: true,
   },
   {
     target: '.details-panel',
@@ -44,11 +45,13 @@ const tourSteps: Step[] = [
     target: '.status-bar',
     content: 'Connection status and stats. Green means you\'re connected to the analysis server.',
     placement: 'top',
+    disableScrolling: true,
   },
   {
     target: '.keyboard-hints',
     content: 'Power user shortcuts: / to search, F to focus, 1-4 for views, ? for help.',
     placement: 'top',
+    disableScrolling: true,
   },
   {
     target: '.view-tabs',
@@ -130,6 +133,8 @@ export function OnboardingTour({ run, onComplete }: OnboardingTourProps) {
       continuous
       showProgress
       showSkipButton
+      scrollToFirstStep={false}
+      disableScrollParentFix
       callback={handleCallback}
       styles={joyrideStyles}
       locale={{
