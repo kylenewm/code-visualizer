@@ -1,86 +1,101 @@
 # CodeFlow Visualizer
 
-Real-time code visualization for understanding how your codebase connects. Designed for use with AI coding assistants like Claude Code.
-
-## Features
-
-- **Architecture View** - Module-level overview with drill-down to files and functions
-- **Change Feed** - See what changed with git diffs
-- **Walkthrough View** - Step through execution flow from any entry point
-- **Graph View** - Interactive call graph with file groupings
-- **Real-time Updates** - WebSocket-powered live updates as code changes
+Real-time code visualization for understanding how your codebase connects. See call graphs, trace execution flow, and watch changes as they happen.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Clone and install
+git clone https://github.com/kylenewm/code-visualizer.git
+cd code-visualizer
 npm install
+cd web && npm install && cd ..
 
-# Start the server (analyzes current directory by default)
+# Start (analyzes current directory)
 npm run dev
 
-# Or analyze a specific project
-npm run dev -- --path /path/to/your/project
+# Or analyze a different project
+npm run dev /path/to/your/project
 ```
 
-Then open http://localhost:5173 in your browser.
+Open http://localhost:5173 in your browser.
 
-## Requirements
+## Try It Out
 
-- Node.js 18+
-- npm 9+
+The repo includes test fixtures you can explore:
+
+```bash
+# Analyze the test fixtures
+npm run dev test/fixtures/e2e-project
+
+# Or analyze CodeFlow itself
+npm run dev .
+```
+
+## Features
+
+| View | Purpose |
+|------|---------|
+| **Architecture** | Module-level overview, drill into files/functions |
+| **Changes** | Live feed of modifications with git diffs |
+| **Walkthrough** | Step through execution flow from any entry point |
+| **Graph** | Interactive call graph with 300+ node support |
+
+**Keyboard shortcuts:** `/` search, `1-4` switch views, `F` focus mode, `?` help
+
+## Supported Languages
+
+- TypeScript / JavaScript
+- Python
 
 ## How It Works
 
-1. **Parser** - Uses tree-sitter to parse TypeScript/JavaScript and Python files
-2. **Extractor** - Extracts functions, classes, imports, and call sites
-3. **Graph Engine** - Builds a call graph with edges between functions
-4. **File Watcher** - Detects changes and re-analyzes affected files
-5. **Web UI** - React frontend with D3 visualization
+1. **Parser** - tree-sitter extracts AST from source files
+2. **Extractor** - identifies functions, classes, imports, call sites
+3. **Graph Engine** - builds call graph with typed edges
+4. **File Watcher** - re-analyzes on changes, pushes via WebSocket
+5. **Web UI** - React + D3 visualization with Zustand state
 
 ## Project Structure
 
 ```
 src/
   analyzer/       # Tree-sitter parsing and extraction
-  graph/          # Call graph engine
-  hooks/          # Change detection (Claude hooks + file watcher)
-  server/         # Express API + WebSocket server
-web/
-  src/
-    components/   # React components (Graph, Architecture, etc.)
-    lib/          # State management, layout engine
+  graph/          # Call graph data structure
+  hooks/          # Change detection (file watcher)
+  server/         # Express API + WebSocket
+web/src/
+  components/     # React components
+  lib/            # State, layout, keyboard shortcuts
 ```
 
-## API Endpoints
+## API
 
 | Endpoint | Description |
 |----------|-------------|
-| GET /api/graph | Full call graph |
-| GET /api/modules | Module-level architecture |
-| GET /api/search?q= | Search nodes by name |
-| GET /api/nodes/:id | Node details |
-| GET /api/nodes/:id/callers | Who calls this function |
-| GET /api/nodes/:id/callees | What this function calls |
-| GET /api/changes | Recent changes with diffs |
+| `GET /api/graph` | Full call graph |
+| `GET /api/modules` | Module architecture |
+| `GET /api/search?q=` | Search nodes |
+| `GET /api/changes` | Recent changes with diffs |
 
 ## Development
 
 ```bash
-# Run tests
-npm test
-
-# Run with watch mode
-npm run test:watch
-
-# Type check
-npm run typecheck
+npm test              # Run tests (65 passing)
+npm run typecheck     # Type check
+npm run dev:web       # Frontend only (hot reload)
 ```
 
-## Supported Languages
+## Requirements
 
-- TypeScript / JavaScript
-- Python
+- Node.js 18+
+- npm 9+
+
+## Stats
+
+- ~11,400 lines of code
+- 65 tests passing
+- TypeScript throughout
 
 ## License
 
