@@ -125,7 +125,7 @@ function App() {
           {viewMode === 'graph' && <Graph ref={graphRef} />}
         </div>
         <aside className="details-panel">
-          <NodeDetails />
+          <NodeDetails viewMode={viewMode} />
         </aside>
       </main>
 

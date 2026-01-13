@@ -169,29 +169,6 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     return layoutGraph(filteredNodes, filteredEdges, { rankdir: 'TB' });
   }, [nodes, edges, searchQuery, showChangedOnly, getChangedNodesWithNeighbors, focusMode, selectedNodeId, focusDepth, getNeighbors]);
 
-  // Compute file -> color mapping for legend
-  const fileColors = useMemo(() => {
-    const colors = [
-      '#3b82f6', // blue
-      '#10b981', // green
-      '#f59e0b', // amber
-      '#ef4444', // red
-      '#8b5cf6', // purple
-      '#06b6d4', // cyan
-      '#f97316', // orange
-      '#ec4899', // pink
-    ];
-    const map = new Map<string, string>();
-    let colorIndex = 0;
-    for (const node of layout.nodes) {
-      const fileName = node.filePath.split('/').pop() || 'unknown';
-      if (!map.has(fileName)) {
-        map.set(fileName, colors[colorIndex % colors.length]);
-        colorIndex++;
-      }
-    }
-    return Array.from(map.entries());
-  }, [layout.nodes]);
 
   // Zoom controls
   const zoomIn = useCallback(() => {
@@ -380,27 +357,27 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         const minY = Math.min(...ys) - 50;
         const maxY = Math.max(...ys) + 50;
 
-        // Background rectangle - more visible
+        // Border-only rectangle with dashed line (lighter visual weight)
         groupBgLayer.append('rect')
           .attr('x', minX)
           .attr('y', minY)
           .attr('width', maxX - minX)
           .attr('height', maxY - minY)
           .attr('rx', 8)
-          .attr('fill', color)
-          .attr('opacity', 0.12)
+          .attr('fill', 'none')
           .attr('stroke', color)
-          .attr('stroke-width', 2)
-          .attr('stroke-opacity', 0.6);
+          .attr('stroke-width', 1.5)
+          .attr('stroke-opacity', 0.5)
+          .attr('stroke-dasharray', '6,3');
 
-        // File name label - prominent
+        // File name label - positioned above the border
         groupBgLayer.append('text')
-          .attr('x', minX + 10)
-          .attr('y', minY + 18)
+          .attr('x', minX + 8)
+          .attr('y', minY - 6)
           .attr('fill', color)
-          .attr('font-size', '12px')
-          .attr('font-weight', 600)
-          .attr('opacity', 0.9)
+          .attr('font-size', '11px')
+          .attr('font-weight', 500)
+          .attr('opacity', 0.8)
           .text(fileName);
       }
     }
@@ -657,7 +634,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         )}
       </div>
 
-      {/* Legend - Collapsible */}
+      {/* Legend - Collapsible - Shows only node types and edge types */}
       <div className={`graph-legend ${legendExpanded ? 'expanded' : 'collapsed'}`}>
         <button
           className="legend-toggle"
@@ -669,27 +646,30 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         {legendExpanded && (
           <div className="legend-content">
             <div className="legend-section">
-              <div className="legend-section-title">Edges</div>
+              <div className="legend-section-title">Node Types</div>
               <div className="legend-item">
-                <span className="legend-color" style={{ background: '#22c55e' }} />
-                <span>Callers</span>
+                <span className="legend-color" style={{ background: COLORS.function }} />
+                <span>Function</span>
               </div>
               <div className="legend-item">
-                <span className="legend-color" style={{ background: '#f59e0b' }} />
-                <span>Calls</span>
+                <span className="legend-color" style={{ background: COLORS.method }} />
+                <span>Method</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: COLORS.class }} />
+                <span>Class</span>
               </div>
             </div>
             <div className="legend-section">
-              <div className="legend-section-title">Files (border)</div>
-              {fileColors.slice(0, 8).map(([fileName, color]) => (
-                <div key={fileName} className="legend-item">
-                  <span className="legend-color" style={{ background: color }} />
-                  <span>{fileName}</span>
-                </div>
-              ))}
-              {fileColors.length > 8 && (
-                <div className="legend-item muted">+{fileColors.length - 8} more</div>
-              )}
+              <div className="legend-section-title">Edges</div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#22c55e' }} />
+                <span>Callers (incoming)</span>
+              </div>
+              <div className="legend-item">
+                <span className="legend-color" style={{ background: '#f59e0b' }} />
+                <span>Calls (outgoing)</span>
+              </div>
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@
  * Saves and restores UI state from localStorage
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useGraphStore } from './store';
 
 const SESSION_KEY = 'codeflow-session';
@@ -28,9 +28,14 @@ export function useSessionPersistence() {
   const setExpandedModules = useGraphStore((s) => s.setExpandedModules);
   const setExpandedFiles = useGraphStore((s) => s.setExpandedFiles);
 
+  // Track if we've already attempted restoration (prevents multiple restores)
+  const hasRestoredRef = useRef(false);
+
   // Restore session on mount (only once when nodes are loaded)
   useEffect(() => {
-    if (nodes.length === 0) return; // Wait for data
+    // Only restore once, and only when nodes are loaded
+    if (hasRestoredRef.current || nodes.length === 0) return;
+    hasRestoredRef.current = true;
 
     try {
       const saved = localStorage.getItem(SESSION_KEY);
@@ -62,7 +67,7 @@ export function useSessionPersistence() {
       console.warn('Failed to restore session:', error);
       localStorage.removeItem(SESSION_KEY);
     }
-  }, [nodes.length]); // Only run when nodes first load
+  }, [nodes.length, setSelectedNode, setSearchQuery, setExpandedModules, setExpandedFiles]);
 
   // Save session on changes (debounced)
   useEffect(() => {

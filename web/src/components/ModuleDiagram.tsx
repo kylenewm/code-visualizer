@@ -100,25 +100,41 @@ function calculateLayout(
     layerGroups.set(layer, group);
   }
 
-  // Position modules
+  // Position modules - compact layout
   const BOX_WIDTH = 120;
-  const BOX_HEIGHT = 60;
-  const H_GAP = 40;
-  const V_GAP = 80;
-  const numLayers = Math.max(...Array.from(layers.values())) + 1;
+  const BOX_HEIGHT = 50;
+  const H_GAP = 30;
+  const V_GAP = 40;
+  const PADDING = 20;
+
+  // First pass: calculate positions centered at origin
+  const tempPositions: { mod: ModuleNode; x: number; y: number }[] = [];
 
   for (const [layer, group] of layerGroups) {
-    const y = layer * (BOX_HEIGHT + V_GAP) + 20;
+    const y = layer * (BOX_HEIGHT + V_GAP) + PADDING;
     const totalWidth = group.length * BOX_WIDTH + (group.length - 1) * H_GAP;
-    const startX = (numLayers * (BOX_WIDTH + H_GAP)) / 2 - totalWidth / 2 + 60;
+    const startX = -totalWidth / 2; // Center around 0
 
     group.forEach((mod, i) => {
-      positions.set(mod.id, {
+      tempPositions.push({
+        mod,
         x: startX + i * (BOX_WIDTH + H_GAP),
         y,
-        width: BOX_WIDTH,
-        height: BOX_HEIGHT,
       });
+    });
+  }
+
+  // Find minimum X to ensure nothing is cut off
+  const minX = Math.min(...tempPositions.map(p => p.x));
+  const offsetX = PADDING - minX; // Shift everything so minimum is at PADDING
+
+  // Apply offset and set final positions
+  for (const { mod, x, y } of tempPositions) {
+    positions.set(mod.id, {
+      x: x + offsetX,
+      y,
+      width: BOX_WIDTH,
+      height: BOX_HEIGHT,
     });
   }
 
@@ -148,19 +164,20 @@ function getArrowPath(
 
 export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
   const [hoveredModule, setHoveredModule] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const positions = useMemo(
     () => calculateLayout(moduleGraph.modules, moduleGraph.edges),
     [moduleGraph]
   );
 
-  // Calculate SVG dimensions
+  // Calculate SVG dimensions - compact
   const svgSize = useMemo(() => {
-    let maxX = 400;
-    let maxY = 200;
+    let maxX = 300;
+    let maxY = 100;
     for (const pos of positions.values()) {
-      maxX = Math.max(maxX, pos.x + pos.width + 40);
-      maxY = Math.max(maxY, pos.y + pos.height + 40);
+      maxX = Math.max(maxX, pos.x + pos.width + 20);
+      maxY = Math.max(maxY, pos.y + pos.height + 16);
     }
     return { width: maxX, height: maxY };
   }, [positions]);
@@ -182,8 +199,14 @@ export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
   }
 
   return (
-    <div className="module-diagram">
-      <h3>Module Dependencies</h3>
+    <div className={`module-diagram ${isCollapsed ? 'collapsed' : ''}`}>
+      <h3
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+      >
+        {isCollapsed ? '▶' : '▼'} Module Dependencies
+      </h3>
+      {!isCollapsed && (
       <div className="diagram-container">
         <svg
           width={svgSize.width}
@@ -263,10 +286,10 @@ export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
                     rx={6}
                     fill={
                       mod.recentlyChanged
-                        ? 'rgba(251, 146, 60, 0.2)'
+                        ? 'rgba(251, 146, 60, 0.15)'
                         : isHovered || isConnected
-                        ? 'rgba(59, 130, 246, 0.2)'
-                        : 'rgba(30, 41, 59, 0.9)'
+                        ? 'rgba(59, 130, 246, 0.15)'
+                        : '#1e293b'
                     }
                     stroke={
                       mod.recentlyChanged
@@ -275,9 +298,9 @@ export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
                         ? '#3b82f6'
                         : isConnected
                         ? '#60a5fa'
-                        : '#475569'
+                        : '#334155'
                     }
-                    strokeWidth={isHovered ? 2 : 1.5}
+                    strokeWidth={mod.recentlyChanged || isHovered ? 2 : 1}
                   />
                   <text
                     x={pos.width / 2}
@@ -316,6 +339,7 @@ export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
           </g>
         </svg>
       </div>
+      )}
     </div>
   );
 }

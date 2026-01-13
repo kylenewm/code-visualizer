@@ -5,6 +5,10 @@
 
 import { useGraphStore } from '../lib/store';
 
+interface NodeDetailsProps {
+  viewMode: 'architecture' | 'recent' | 'walkthrough' | 'graph';
+}
+
 /** Format timestamp as relative time (e.g., "2m ago") */
 function formatTimeAgo(timestamp: number | undefined): string | null {
   if (!timestamp) return null;
@@ -19,7 +23,7 @@ function formatTimeAgo(timestamp: number | undefined): string | null {
   return `${days}d ago`;
 }
 
-export function NodeDetails() {
+export function NodeDetails({ viewMode }: NodeDetailsProps) {
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const getNode = useGraphStore((s) => s.getNode);
   const getCallees = useGraphStore((s) => s.getCallees);
@@ -27,7 +31,17 @@ export function NodeDetails() {
   const getCallChainTo = useGraphStore((s) => s.getCallChainTo);
   const getImpact = useGraphStore((s) => s.getImpact);
   const navigateToNode = useGraphStore((s) => s.navigateToNode);
+  const drillDownToWalkthrough = useGraphStore((s) => s.drillDownToWalkthrough);
   const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
+
+  // Context-aware navigation: in walkthrough view, drill down to update entry point
+  const handleNodeNavigation = (nodeId: string) => {
+    if (viewMode === 'walkthrough') {
+      drillDownToWalkthrough(nodeId);
+    } else {
+      navigateToNode(nodeId);
+    }
+  };
 
   const node = selectedNodeId ? getNode(selectedNodeId) : null;
   const callees = selectedNodeId ? getCallees(selectedNodeId) : [];
@@ -101,7 +115,7 @@ export function NodeDetails() {
                     {idx > 0 && <span className="chain-arrow">→</span>}
                     <button
                       className={`chain-node ${chainNode.id === node.id ? 'current' : ''}`}
-                      onClick={() => chainNode.id !== node.id && navigateToNode(chainNode.id)}
+                      onClick={() => chainNode.id !== node.id && handleNodeNavigation(chainNode.id)}
                       disabled={chainNode.id === node.id}
                     >
                       <span className={`kind-dot ${chainNode.kind}`} />
@@ -178,7 +192,7 @@ export function NodeDetails() {
                   return (
                     <li
                       key={caller.id}
-                      onClick={() => navigateToNode(caller.id)}
+                      onClick={() => handleNodeNavigation(caller.id)}
                       className="clickable impact-item"
                     >
                       <span className={`depth-badge depth-${Math.min(depth, 3)}`}>
@@ -214,7 +228,7 @@ export function NodeDetails() {
             {callees.map((callee) => (
               <li
                 key={callee.id}
-                onClick={() => navigateToNode(callee.id)}
+                onClick={() => handleNodeNavigation(callee.id)}
                 className="clickable callee-item"
               >
                 <div className="callee-header">
