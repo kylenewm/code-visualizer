@@ -10,9 +10,10 @@ const STORAGE_KEY = 'codeflow-onboarding-complete';
 
 interface WelcomeModalProps {
   onClose: () => void;
+  onStartTour?: () => void;
 }
 
-export function WelcomeModal({ onClose }: WelcomeModalProps) {
+export function WelcomeModal({ onClose, onStartTour }: WelcomeModalProps) {
   const [step, setStep] = useState(0);
 
   const steps = [
@@ -170,9 +171,16 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
                 </button>
               </>
             ) : (
-              <button className="btn-primary" onClick={handleComplete}>
-                Get Started
-              </button>
+              <>
+                <button className="btn-secondary" onClick={handleComplete}>
+                  Skip Tour
+                </button>
+                {onStartTour && (
+                  <button className="btn-primary" onClick={onStartTour}>
+                    Take Interactive Tour
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -14,6 +14,7 @@ import { ChangeFeed } from './components/ChangeFeed';
 import { CallTreeView } from './components/CallTreeView';
 import { ArchitectureView } from './components/ArchitectureView';
 import { WelcomeModal, useWelcomeModal } from './components/WelcomeModal';
+import { OnboardingTour, useOnboardingTour } from './components/OnboardingTour';
 import { useKeyboardShortcuts } from './lib/keyboard';
 import { useSessionPersistence } from './lib/session';
 import './App.css';
@@ -26,6 +27,9 @@ function App() {
 
   // Welcome modal state
   const { showWelcome, openWelcome, closeWelcome } = useWelcomeModal();
+
+  // Onboarding tour state (off by default, manual trigger only)
+  const { isRunning: isTourRunning, startTour, stopTour } = useOnboardingTour();
 
   // Connection state for disconnect banner
   const isConnected = useGraphStore((s) => s.isConnected);
@@ -136,7 +140,18 @@ function App() {
       </div>
 
       {/* Welcome Modal */}
-      {showWelcome && <WelcomeModal onClose={closeWelcome} />}
+      {showWelcome && (
+        <WelcomeModal
+          onClose={closeWelcome}
+          onStartTour={() => {
+            closeWelcome();
+            startTour();
+          }}
+        />
+      )}
+
+      {/* Interactive Onboarding Tour (off by default) */}
+      <OnboardingTour run={isTourRunning} onComplete={stopTour} />
     </div>
   );
 }

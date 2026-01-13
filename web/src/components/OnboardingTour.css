@@ -1,0 +1,52 @@
+/* Onboarding Tour - Dark theme overrides for react-joyride */
+
+/* Tooltip container */
+.__floater__body {
+  font-family: inherit !important;
+}
+
+/* Override tooltip styling */
+.react-joyride__tooltip {
+  border: 1px solid #3b3b4f !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Progress dots */
+.react-joyride__progress {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+/* Button hover states */
+.react-joyride__tooltip button[data-action="primary"]:hover {
+  background: linear-gradient(135deg, #4f8ff7 0%, #3b82f6 100%) !important;
+  transform: translateY(-1px);
+}
+
+.react-joyride__tooltip button[data-action="back"]:hover {
+  color: #aaa !important;
+}
+
+.react-joyride__tooltip button[data-action="skip"]:hover {
+  color: #888 !important;
+}
+
+/* Spotlight effect */
+.react-joyride__spotlight {
+  border: 2px solid rgba(59, 130, 246, 0.5) !important;
+}
+
+/* Beacon pulse animation - hidden since we use disableBeacon */
+.react-joyride__beacon {
+  display: none !important;
+}
+
+/* Close button styling */
+.react-joyride__tooltip button[aria-label="Close"] {
+  color: #666 !important;
+}
+
+.react-joyride__tooltip button[aria-label="Close"]:hover {
+  color: #fff !important;
+}
