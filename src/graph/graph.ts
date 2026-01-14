@@ -65,6 +65,15 @@ export class CodeGraph {
     return this.nodes.get(nodeId);
   }
 
+  getNodeByStableId(stableId: string): GraphNode | undefined {
+    for (const node of this.nodes.values()) {
+      if (node.stableId === stableId) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
   removeNode(nodeId: string): void {
     const node = this.nodes.get(nodeId);
     if (!node) return;

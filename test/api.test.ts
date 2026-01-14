@@ -189,4 +189,114 @@ describe('API Endpoints', () => {
       expect(res.body.count).toBeGreaterThan(0);
     });
   });
+
+  describe('Annotation Endpoints', () => {
+    describe('GET /api/annotations/pending', () => {
+      it('returns unannotated functions', async () => {
+        const res = await request(baseUrl).get('/api/annotations/pending');
+
+        expect(res.status).toBe(200);
+        expect(res.body.nodes).toBeDefined();
+        expect(res.body.count).toBeGreaterThan(0);
+        expect(res.body.unannotated).toBeDefined();
+        expect(res.body.stale).toBeDefined();
+      });
+
+      it('respects limit parameter', async () => {
+        const res = await request(baseUrl).get('/api/annotations/pending?limit=2');
+
+        expect(res.status).toBe(200);
+        expect(res.body.nodes.length).toBeLessThanOrEqual(2);
+      });
+    });
+
+    describe('POST /api/nodes/:id/annotation', () => {
+      it('updates node annotation', async () => {
+        // Get a function node
+        const searchRes = await request(baseUrl).get('/api/search?q=handleRequest');
+        const nodeId = searchRes.body.nodes[0].id;
+
+        const res = await request(baseUrl)
+          .post(`/api/nodes/${encodeURIComponent(nodeId)}/annotation`)
+          .send({ text: 'Handles incoming requests and orchestrates processing.', source: 'claude' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.node.annotation).toBeDefined();
+        expect(res.body.node.annotation.text).toBe('Handles incoming requests and orchestrates processing.');
+        expect(res.body.node.annotation.source).toBe('claude');
+        expect(res.body.node.annotation.contentHash).toBeDefined();
+        expect(res.body.node.annotation.generatedAt).toBeDefined();
+      });
+
+      it('returns 400 without text', async () => {
+        const searchRes = await request(baseUrl).get('/api/search?q=handleRequest');
+        const nodeId = searchRes.body.nodes[0].id;
+
+        const res = await request(baseUrl)
+          .post(`/api/nodes/${encodeURIComponent(nodeId)}/annotation`)
+          .send({});
+
+        expect(res.status).toBe(400);
+      });
+
+      it('returns 404 for unknown node', async () => {
+        const res = await request(baseUrl)
+          .post('/api/nodes/nonexistent/annotation')
+          .send({ text: 'Test' });
+
+        expect(res.status).toBe(404);
+      });
+    });
+
+    describe('POST /api/annotations/bulk', () => {
+      it('updates multiple annotations', async () => {
+        // Get two function nodes
+        const search1 = await request(baseUrl).get('/api/search?q=validateInput');
+        const search2 = await request(baseUrl).get('/api/search?q=processData');
+        const nodeId1 = search1.body.nodes[0].id;
+        const nodeId2 = search2.body.nodes[0].id;
+
+        const res = await request(baseUrl)
+          .post('/api/annotations/bulk')
+          .send({
+            annotations: [
+              { nodeId: nodeId1, text: 'Validates incoming request data.' },
+              { nodeId: nodeId2, text: 'Processes and transforms data.' },
+            ],
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(2);
+        expect(res.body.failed).toBe(0);
+        expect(res.body.results.length).toBe(2);
+      });
+
+      it('handles partial failures', async () => {
+        const searchRes = await request(baseUrl).get('/api/search?q=handleRequest');
+        const validNodeId = searchRes.body.nodes[0].id;
+
+        const res = await request(baseUrl)
+          .post('/api/annotations/bulk')
+          .send({
+            annotations: [
+              { nodeId: validNodeId, text: 'Valid annotation.' },
+              { nodeId: 'nonexistent', text: 'Invalid.' },
+            ],
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(1);
+        expect(res.body.failed).toBe(1);
+      });
+
+      it('returns 400 without annotations array', async () => {
+        const res = await request(baseUrl)
+          .post('/api/annotations/bulk')
+          .send({});
+
+        expect(res.status).toBe(400);
+      });
+    });
+  });
 });

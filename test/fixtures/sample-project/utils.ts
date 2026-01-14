@@ -13,5 +13,6 @@ export async function comparePassword(password: string, hash: string): Promise<b
 }
 
 export function generateId(): string {
+  // Generate a unique random ID for tokens
   return Math.random().toString(36).slice(2);
 }

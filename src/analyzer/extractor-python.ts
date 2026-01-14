@@ -22,8 +22,25 @@ function generateNodeId(filePath: string, kind: NodeKind, name: string, signatur
   return `${fileHash}:${kind}:${name}:${sigHash}`;
 }
 
+function generateStableId(filePath: string, kind: NodeKind, name: string): string {
+  const fileHash = hashString(filePath);
+  return `${fileHash}:${kind}:${name}`;
+}
+
 function generateEdgeId(source: string, target: string, type: string): string {
   return `${source}->${target}:${type}`;
+}
+
+/**
+ * Calculate content hash for a Python function node
+ * Used for annotation staleness detection
+ */
+function calculateContentHash(node: SyntaxNode): string {
+  const body = node.childForFieldName('body');
+  const bodyText = body?.text ?? '';
+  const params = node.childForFieldName('parameters');
+  const paramsText = params?.text ?? '';
+  return hashString(paramsText + bodyText);
 }
 
 // ============================================
@@ -130,8 +147,10 @@ export function extractFromPythonAST(root: SyntaxNode, filePath: string): Extrac
   // Module node
   const moduleName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
   const moduleId = generateNodeId(filePath, 'module', moduleName, '');
+  const moduleStableId = generateStableId(filePath, 'module', moduleName);
   nodes.push({
     id: moduleId,
+    stableId: moduleStableId,
     kind: 'module',
     name: moduleName,
     filePath,
@@ -239,15 +258,18 @@ function extractPythonFunction(node: SyntaxNode, filePath: string): { node: Grap
   const kind: NodeKind = isMethod ? 'method' : 'function';
 
   const nodeId = generateNodeId(filePath, kind, name, signature);
+  const stableId = generateStableId(filePath, kind, name);
 
   // Extract source preview and docstring
   const sourcePreview = extractSourcePreview(node);
   const description = extractDocstring(node);
   const category = inferCategory(filePath);
+  const contentHash = calculateContentHash(node);
 
   return {
     node: {
       id: nodeId,
+      stableId,
       kind,
       name,
       filePath,
@@ -264,6 +286,7 @@ function extractPythonFunction(node: SyntaxNode, filePath: string): { node: Grap
       sourcePreview,
       description,
       category,
+      contentHash,
     },
   };
 }
@@ -342,6 +365,7 @@ function extractPythonClass(node: SyntaxNode, filePath: string): { node: GraphNo
 
   const name = nameNode.text;
   const nodeId = generateNodeId(filePath, 'class', name, '');
+  const stableId = generateStableId(filePath, 'class', name);
 
   // Extract class docstring
   const description = extractDocstring(node);
@@ -350,6 +374,7 @@ function extractPythonClass(node: SyntaxNode, filePath: string): { node: GraphNo
   return {
     node: {
       id: nodeId,
+      stableId,
       kind: 'class',
       name,
       filePath,

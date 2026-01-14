@@ -10,6 +10,25 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { CodeGraph } from '../graph/graph.js';
 import type { ChangeDetector, ChangeDetectorStats, ChangeEvent } from '../hooks/index.js';
 import type { AnalysisResult } from '../hooks/change-aggregator.js';
+import { getAnnotationStore } from '../storage/annotation-store.js';
+import { getModuleStore } from '../storage/module-store.js';
+import { getDriftStore } from '../storage/drift-store.js';
+import { getTouchedStore } from '../storage/touched-store.js';
+import { getDriftDetector } from '../analyzer/drift-detector.js';
+import { getModuleSummarizer } from '../analyzer/module-summarizer.js';
+import { getConceptShiftDetector } from '../analyzer/concept-shift.js';
+import { getDatabase } from '../storage/sqlite.js';
+
+/**
+ * Check if the database is initialized
+ */
+function isDatabaseInitialized(): boolean {
+  try {
+    return getDatabase().isInitialized();
+  } catch {
+    return false;
+  }
+}
 
 // ============================================
 // Types
@@ -22,7 +41,7 @@ export interface ServerConfig {
 }
 
 export interface WebSocketMessage {
-  type: 'graph:update' | 'analysis:start' | 'analysis:complete' | 'change' | 'change:recorded' | 'stats' | 'pong';
+  type: 'graph:update' | 'analysis:start' | 'analysis:complete' | 'change' | 'change:recorded' | 'drift:detected' | 'stats' | 'pong';
   payload: unknown;
 }
 
@@ -43,7 +62,7 @@ export class ApiServer {
     this.config = {
       port: 3001,
       host: 'localhost',
-      corsOrigins: ['http://localhost:5173', 'http://localhost:3000'],
+      corsOrigins: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'],
       ...config,
     };
 
@@ -266,6 +285,532 @@ export class ApiServer {
       res.json(change);
     });
 
+    // ----------------------------------------
+    // Annotation Endpoints (with persistence)
+    // ----------------------------------------
+
+    // Get annotation statistics
+    this.app.get('/api/annotations/stats', (_req: Request, res: Response) => {
+      const annotationStore = getAnnotationStore();
+      const stats = annotationStore.getStats();
+      res.json(stats);
+    });
+
+    // Get nodes needing annotation (unannotated or stale)
+    this.app.get('/api/annotations/pending', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const allNodes = this.graph.getAllNodes();
+
+      const pending = allNodes.filter(n => {
+        // Only functions and methods can have annotations
+        if (n.kind !== 'function' && n.kind !== 'method') return false;
+        // No annotation yet
+        if (!n.annotation) return true;
+        // Stale annotation (content changed since annotation)
+        if (n.contentHash && n.annotation.contentHash !== n.contentHash) return true;
+        return false;
+      }).slice(0, limit);
+
+      const staleCount = pending.filter(n => n.annotation).length;
+      const unannotatedCount = pending.filter(n => !n.annotation).length;
+
+      res.json({
+        nodes: pending,
+        count: pending.length,
+        stale: staleCount,
+        unannotated: unannotatedCount,
+      });
+    });
+
+    // Get annotation history for a node (uses stableId for lookup)
+    this.app.get('/api/nodes/:id/annotation/history', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const nodeId = this.getParamAsString(req.params.id);
+      const node = this.graph.getNode(nodeId);
+      if (!node) {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+
+      const annotationStore = getAnnotationStore();
+      const history = annotationStore.getHistory(node.stableId);
+      res.json({ nodeId, stableId: node.stableId, history, count: history.length });
+    });
+
+    // Update annotation for a single node (with persistence)
+    this.app.post('/api/nodes/:id/annotation', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const nodeId = this.getParamAsString(req.params.id);
+      const node = this.graph.getNode(nodeId);
+      if (!node) {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+
+      const { text, source } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ error: 'Annotation text required' });
+      }
+
+      const annotationSource: 'claude' | 'manual' = source === 'manual' ? 'manual' : 'claude';
+      const contentHash = node.contentHash || '';
+
+      let versionId: number | undefined;
+      let isNew = true;
+      let supersededId: number | undefined;
+
+      // Persist to database if initialized
+      if (isDatabaseInitialized()) {
+        try {
+          const annotationStore = getAnnotationStore();
+          const result = annotationStore.saveAnnotation(nodeId, node.stableId, text, contentHash, annotationSource);
+          versionId = result.versionId;
+          isNew = result.isNew;
+          supersededId = result.supersededId;
+
+          // Resolve any drift for this node (by stableId)
+          const driftDetector = getDriftDetector();
+          driftDetector.resolveOnAnnotation(node.stableId);
+
+          // Clear from touched queue
+          const touchedStore = getTouchedStore();
+          touchedStore.markAnnotated(node.stableId);
+        } catch (error) {
+          // Log but don't fail - in-memory update still works
+          console.warn('Failed to persist annotation:', error);
+        }
+      }
+
+      // Update node with annotation
+      node.annotation = {
+        text,
+        contentHash,
+        generatedAt: Date.now(),
+        source: annotationSource,
+      };
+
+      // Broadcast update
+      this.broadcast({
+        type: 'graph:update',
+        payload: this.graph.toJSON(),
+      });
+
+      res.json({
+        success: true,
+        versionId,
+        isNew,
+        supersededId,
+        node,
+      });
+    });
+
+    // Bulk update annotations (with persistence)
+    this.app.post('/api/annotations/bulk', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const { annotations } = req.body;
+      if (!Array.isArray(annotations)) {
+        return res.status(400).json({ error: 'Annotations array required' });
+      }
+
+      const dbInitialized = isDatabaseInitialized();
+
+      const results = annotations.map(({ nodeId, text, source }: { nodeId: string; text: string; source?: string }) => {
+        const node = this.graph!.getNode(nodeId);
+        if (!node) return { nodeId, success: false, error: 'Not found' };
+
+        const annotationSource: 'claude' | 'manual' = source === 'manual' ? 'manual' : 'claude';
+        const contentHash = node.contentHash || '';
+
+        let versionId: number | undefined;
+
+        // Persist to database if initialized
+        if (dbInitialized) {
+          try {
+            const annotationStore = getAnnotationStore();
+            const saveResult = annotationStore.saveAnnotation(nodeId, node.stableId, text, contentHash, annotationSource);
+            versionId = saveResult.versionId;
+
+            // Resolve drift (by stableId)
+            const driftDetector = getDriftDetector();
+            driftDetector.resolveOnAnnotation(node.stableId);
+
+            // Clear from touched queue
+            const touchedStore = getTouchedStore();
+            touchedStore.markAnnotated(node.stableId);
+          } catch (error) {
+            console.warn('Failed to persist annotation:', error);
+          }
+        }
+
+        // Update in-memory node
+        node.annotation = {
+          text,
+          contentHash,
+          generatedAt: Date.now(),
+          source: annotationSource,
+        };
+
+        return { nodeId, success: true, versionId };
+      });
+
+      // Broadcast update
+      this.broadcast({
+        type: 'graph:update',
+        payload: this.graph.toJSON(),
+      });
+
+      const successCount = results.filter(r => r.success).length;
+      res.json({ results, success: successCount, failed: results.length - successCount });
+    });
+
+    // ----------------------------------------
+    // Module Annotation Endpoints
+    // ----------------------------------------
+
+    // Get module annotation
+    this.app.get('/api/modules/:path(*)/annotation', (req: Request, res: Response) => {
+      const modulePath = '/' + this.getParamAsString(req.params.path);
+      const moduleStore = getModuleStore();
+      const annotation = moduleStore.getAnnotation(modulePath);
+
+      if (!annotation) {
+        return res.status(404).json({ error: 'No annotation for this module' });
+      }
+
+      // Check staleness if graph available
+      if (this.graph) {
+        const summarizer = getModuleSummarizer();
+        summarizer.setGraph(this.graph);
+        const extended = summarizer.getExtendedModuleNode(modulePath);
+        if (extended?.annotation) {
+          return res.json({
+            ...annotation,
+            stale: extended.annotation.stale,
+            functionsCovered: extended.annotation.functionsCovered,
+            functionsTotal: extended.annotation.functionsTotal,
+          });
+        }
+      }
+
+      res.json(annotation);
+    });
+
+    // Generate/regenerate module annotation
+    this.app.post('/api/modules/:path(*)/annotation/regenerate', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const modulePath = '/' + this.getParamAsString(req.params.path);
+      const summarizer = getModuleSummarizer();
+      summarizer.setGraph(this.graph);
+
+      const result = summarizer.summarizeModule(modulePath);
+      if (!result) {
+        return res.status(404).json({ error: 'Module not found or has no functions' });
+      }
+
+      res.json(result);
+    });
+
+    // Get all modules with annotation status
+    this.app.get('/api/modules/annotations', (_req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const summarizer = getModuleSummarizer();
+      summarizer.setGraph(this.graph);
+      const modules = summarizer.getAllExtendedModules();
+      res.json({ modules, count: modules.length });
+    });
+
+    // Get stale modules
+    this.app.get('/api/modules/annotations/stale', (_req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const summarizer = getModuleSummarizer();
+      summarizer.setGraph(this.graph);
+      const stale = summarizer.getStaleModules();
+      res.json({ stale, count: stale.length });
+    });
+
+    // Get module coverage
+    this.app.get('/api/modules/:path(*)/coverage', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const modulePath = '/' + this.getParamAsString(req.params.path);
+      const summarizer = getModuleSummarizer();
+      summarizer.setGraph(this.graph);
+      const coverage = summarizer.getModuleCoverage(modulePath);
+      res.json(coverage);
+    });
+
+    // ----------------------------------------
+    // Drift Detection Endpoints
+    // ----------------------------------------
+
+    // Get drift statistics
+    this.app.get('/api/drift/stats', (_req: Request, res: Response) => {
+      const driftDetector = getDriftDetector();
+      const stats = driftDetector.getStats();
+      res.json(stats);
+    });
+
+    // Get all unresolved drift
+    this.app.get('/api/drift', (req: Request, res: Response) => {
+      const limit = this.getQueryAsInt(req.query.limit, 100);
+      const driftDetector = getDriftDetector();
+      const drift = driftDetector.getUnresolvedDrift(limit);
+      res.json({ drift, count: drift.length });
+    });
+
+    // Get drift by severity
+    this.app.get('/api/drift/severity/:level', (req: Request, res: Response) => {
+      const level = this.getParamAsString(req.params.level) as 'low' | 'medium' | 'high';
+      if (!['low', 'medium', 'high'].includes(level)) {
+        return res.status(400).json({ error: 'Invalid severity level' });
+      }
+
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const driftStore = getDriftStore();
+      const drift = driftStore.getUnresolvedBySeverity(level, limit);
+      res.json({ drift, count: drift.length, severity: level });
+    });
+
+    // Get drift for a specific node (uses stableId for lookup)
+    this.app.get('/api/nodes/:id/drift', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const nodeId = this.getParamAsString(req.params.id);
+      const node = this.graph.getNode(nodeId);
+      if (!node) {
+        return res.status(404).json({ error: 'Node not found' });
+      }
+
+      const driftDetector = getDriftDetector();
+      const current = driftDetector.getNodeDrift(node.stableId);
+      const history = driftDetector.getNodeDriftHistory(node.stableId);
+
+      res.json({
+        nodeId,
+        stableId: node.stableId,
+        hasUnresolvedDrift: current !== null,
+        current,
+        history,
+        historyCount: history.length,
+      });
+    });
+
+    // Resolve a drift event
+    this.app.post('/api/drift/:id/resolve', (req: Request, res: Response) => {
+      const driftId = parseInt(this.getParamAsString(req.params.id));
+      if (isNaN(driftId)) {
+        return res.status(400).json({ error: 'Invalid drift ID' });
+      }
+
+      const { resolution } = req.body;
+      if (!resolution || typeof resolution !== 'string') {
+        return res.status(400).json({ error: 'Resolution text required' });
+      }
+
+      const driftDetector = getDriftDetector();
+      const success = driftDetector.resolveDrift(driftId, resolution);
+
+      if (!success) {
+        return res.status(404).json({ error: 'Drift not found or already resolved' });
+      }
+
+      res.json({ success: true, driftId, resolution });
+    });
+
+    // Get recent drift events
+    this.app.get('/api/drift/recent', (req: Request, res: Response) => {
+      const limit = this.getQueryAsInt(req.query.limit, 20);
+      const driftStore = getDriftStore();
+      const recent = driftStore.getRecent(limit);
+      res.json({ drift: recent, count: recent.length });
+    });
+
+    // ----------------------------------------
+    // Concept Shift Detection Endpoints
+    // ----------------------------------------
+
+    // Get all detected concept shifts
+    this.app.get('/api/drift/concept-shifts', (req: Request, res: Response) => {
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const conceptShiftDetector = getConceptShiftDetector();
+      const shifts = conceptShiftDetector.getConceptShifts(limit);
+      const count = conceptShiftDetector.getConceptShiftCount();
+      res.json({ shifts, count, total: count });
+    });
+
+    // Get pending drift events needing concept check
+    this.app.get('/api/drift/concept-pending', (req: Request, res: Response) => {
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const conceptShiftDetector = getConceptShiftDetector();
+      const pending = conceptShiftDetector.getPendingChecks(limit);
+      res.json({ pending, count: pending.length });
+    });
+
+    // Get concept check prompt for a drift event
+    this.app.get('/api/drift/:id/concept-check', (req: Request, res: Response) => {
+      const driftId = parseInt(this.getParamAsString(req.params.id));
+      if (isNaN(driftId)) {
+        return res.status(400).json({ error: 'Invalid drift ID' });
+      }
+
+      const conceptShiftDetector = getConceptShiftDetector();
+
+      // Check if concept check is needed
+      if (!conceptShiftDetector.needsConceptCheck(driftId)) {
+        return res.status(400).json({
+          error: 'Concept check not needed',
+          reason: 'Either already checked, no old annotation exists, or drift not found'
+        });
+      }
+
+      // Get old annotation
+      const oldAnnotation = conceptShiftDetector.getOldAnnotation(driftId);
+      if (!oldAnnotation) {
+        return res.status(400).json({
+          error: 'No old annotation',
+          reason: 'Cannot compare without previous annotation'
+        });
+      }
+
+      // Return prompt info (new annotation text should be provided by caller)
+      res.json({
+        driftId,
+        oldAnnotation,
+        promptTemplate: conceptShiftDetector.generatePrompt(oldAnnotation, '{NEW_ANNOTATION}'),
+        instructions: 'Replace {NEW_ANNOTATION} with the new annotation text, submit to Claude, then POST result to /api/drift/:id/concept-shift'
+      });
+    });
+
+    // Record concept shift result
+    this.app.post('/api/drift/:id/concept-shift', (req: Request, res: Response) => {
+      const driftId = parseInt(this.getParamAsString(req.params.id));
+      if (isNaN(driftId)) {
+        return res.status(400).json({ error: 'Invalid drift ID' });
+      }
+
+      const { result, reason, oldAnnotation, newAnnotation } = req.body;
+      if (!result || !['SAME', 'SHIFTED', 'UNCLEAR'].includes(result)) {
+        return res.status(400).json({
+          error: 'Invalid result',
+          validValues: ['SAME', 'SHIFTED', 'UNCLEAR']
+        });
+      }
+
+      const conceptShiftDetector = getConceptShiftDetector();
+      const success = conceptShiftDetector.recordResult(driftId, result, reason);
+
+      if (!success) {
+        return res.status(404).json({ error: 'Drift not found' });
+      }
+
+      res.json({
+        success: true,
+        driftId,
+        result,
+        reason,
+        conceptShifted: result === 'SHIFTED'
+      });
+    });
+
+    // Generate concept shift prompt with both annotations
+    this.app.post('/api/drift/concept-prompt', (req: Request, res: Response) => {
+      const { oldAnnotation, newAnnotation } = req.body;
+
+      if (!oldAnnotation || typeof oldAnnotation !== 'string') {
+        return res.status(400).json({ error: 'oldAnnotation text required' });
+      }
+      if (!newAnnotation || typeof newAnnotation !== 'string') {
+        return res.status(400).json({ error: 'newAnnotation text required' });
+      }
+
+      const conceptShiftDetector = getConceptShiftDetector();
+      const prompt = conceptShiftDetector.generatePrompt(oldAnnotation, newAnnotation);
+
+      res.json(prompt);
+    });
+
+    // Parse concept shift response
+    this.app.post('/api/drift/concept-parse', (req: Request, res: Response) => {
+      const { response } = req.body;
+
+      if (!response || typeof response !== 'string') {
+        return res.status(400).json({ error: 'response text required' });
+      }
+
+      const conceptShiftDetector = getConceptShiftDetector();
+      const parsed = conceptShiftDetector.parseResponse(response);
+
+      res.json(parsed);
+    });
+
+    // ----------------------------------------
+    // Touched Functions Endpoints
+    // ----------------------------------------
+
+    // Get pending touched functions (not yet annotated)
+    this.app.get('/api/functions/touched', (req: Request, res: Response) => {
+      if (!this.graph) {
+        return res.status(503).json({ error: 'Graph not initialized' });
+      }
+
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const touchedStore = getTouchedStore();
+      const touched = touchedStore.getPending(limit);
+
+      // Enrich with node info from graph
+      const enriched = touched.map(t => {
+        const node = this.graph!.getNodeByStableId(t.stableId);
+        return {
+          ...t,
+          name: node?.name,
+          kind: node?.kind,
+          signature: node?.signature,
+          hasAnnotation: !!node?.annotation,
+        };
+      }).filter(t => t.name); // Only include functions that still exist
+
+      res.json({ touched: enriched, count: enriched.length });
+    });
+
+    // Get touched functions statistics
+    this.app.get('/api/functions/touched/stats', (_req: Request, res: Response) => {
+      const touchedStore = getTouchedStore();
+      const stats = touchedStore.getStats();
+      res.json(stats);
+    });
+
+    // Mark function as annotated (clear from touched queue)
+    this.app.post('/api/functions/touched/:stableId/annotated', (req: Request, res: Response) => {
+      const stableId = decodeURIComponent(this.getParamAsString(req.params.stableId));
+      const touchedStore = getTouchedStore();
+      const success = touchedStore.markAnnotated(stableId);
+      res.json({ success, stableId });
+    });
+
     // Error handler
     this.app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
       console.error('API Error:', err);
@@ -364,6 +909,16 @@ export class ApiServer {
           payload: this.graph.toJSON(),
         });
       }
+    });
+
+    // Listen for drift events
+    detector.on('drift:detected', (driftResults: Array<{
+      nodeId: string;
+      driftId: number;
+      severity?: string;
+      driftType?: string;
+    }>) => {
+      this.broadcast({ type: 'drift:detected', payload: driftResults });
     });
   }
 

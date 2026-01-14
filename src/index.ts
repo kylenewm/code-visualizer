@@ -4,10 +4,12 @@
  * Provides CLI for starting the analysis server
  */
 
-import { resolve } from 'path';
+import { resolve, join } from 'path';
 import { analyzeProject } from './analyzer/pipeline.js';
 import { createChangeDetector } from './hooks/index.js';
 import { ApiServer } from './server/index.js';
+import { initDatabase, closeDatabase } from './storage/sqlite.js';
+import { getAnnotationStore } from './storage/annotation-store.js';
 
 // ============================================
 // CLI Arguments
@@ -104,10 +106,35 @@ async function runServe(projectDir: string, port: number, watch: boolean): Promi
   console.log(`Starting CodeFlow Visualizer...`);
   console.log(`Project: ${projectDir}`);
 
+  // Initialize database
+  const dbPath = join(projectDir, '.codeflow', 'observability.db');
+  console.log('Initializing database...');
+  initDatabase({ path: dbPath });
+
   // Initial analysis
   console.log('Performing initial analysis...');
   const { graph, result } = await analyzeProject(projectDir);
   console.log(`Analyzed ${result.files.length} files, found ${graph.getStats().functionCount} functions`);
+
+  // Load persisted annotations into graph (keyed by stableId for stability)
+  const annotationStore = getAnnotationStore();
+  const persistedAnnotations = annotationStore.loadAllCurrent();
+  let loadedCount = 0;
+  for (const [stableId, annotation] of persistedAnnotations) {
+    const node = graph.getNodeByStableId(stableId);
+    if (node) {
+      node.annotation = {
+        text: annotation.text,
+        contentHash: annotation.contentHash,
+        generatedAt: annotation.createdAt,
+        source: annotation.source,
+      };
+      loadedCount++;
+    }
+  }
+  if (loadedCount > 0) {
+    console.log(`Loaded ${loadedCount} persisted annotations`);
+  }
 
   // Start server
   const server = new ApiServer({ port });

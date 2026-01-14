@@ -2,7 +2,37 @@
 
 Real-time code visualization for understanding how your codebase connects. See call graphs, trace execution flow, and watch changes as they happen.
 
-![CodeFlow Visualizer - Walkthrough View](docs/codeflow-walkthrough.png)
+## Visual Tour
+
+### 1. Architecture View
+*Get the big picture of your codebase*
+
+![Architecture View](docs/step1-architecture.png)
+
+The Architecture view shows module dependencies as an interactive diagram. The left panel displays a file tree organized by module, letting you expand any file to see its functions. Click a function to see its details in the right panel including source preview, callers, and callees.
+
+### 2. Changes View
+*Track modifications in real-time*
+
+![Changes View](docs/step2-changes.png)
+
+The Changes view provides a live feed of file modifications with git-style diffs. Each change shows the file name, line counts (+added/-removed), timestamp, and which functions were affected. Click any entry to expand the full diff with syntax highlighting. The badges indicate NEW files vs MODified files.
+
+### 3. Walkthrough View
+*Step through execution flow*
+
+![Walkthrough View](docs/step3-walkthrough.png)
+
+The Walkthrough view displays the call tree from any entry point. Starting from `handleRequest`, you can see the complete execution flow: it calls `validateInput` (which may throw `ValidationError`), then `processData` (which calls `transformData` and `saveToDb`), and finally `formatResponse`. Each step shows the function signature and a preview of what it does.
+
+### 4. Graph View
+*Visualize the complete call graph*
+
+![Graph View](docs/step4-graph.png)
+
+The Graph view renders all 300+ functions as an interactive node graph. Nodes are color-coded by file, and edges show call relationships. Click any node to see its details: where it lives in the codebase, how callers reach it (the call chain), what it does (signature + code preview), impact analysis (how many functions are affected by changes), and what functions it calls.
+
+---
 
 ## Quick Start
 

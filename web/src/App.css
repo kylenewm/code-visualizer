@@ -2948,3 +2948,315 @@
 .node-details h3 {
   text-transform: none;
 }
+
+/* ============================================
+   Semantic Annotations
+   ============================================ */
+
+.annotation-block {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.annotation-block.stale {
+  border-left-color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 5%, var(--bg-elevated));
+}
+
+.annotation-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.annotation-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stale-badge {
+  font-size: var(--text-xs);
+  background: var(--accent-amber);
+  color: var(--bg-base);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-medium);
+}
+
+.annotation-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.annotation-text {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.annotation-empty {
+  padding: var(--space-2);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+/* ============================================
+   Drift Detection Styles
+   ============================================ */
+
+.drift-badge {
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.drift-badge.severity-high {
+  background: var(--accent-red);
+  color: white;
+}
+
+.drift-badge.severity-medium {
+  background: var(--accent-amber);
+  color: var(--bg-base);
+}
+
+.drift-badge.severity-low {
+  background: var(--accent-blue);
+  color: white;
+  opacity: 0.8;
+}
+
+.drift-alert {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-3);
+  border-left: 3px solid;
+}
+
+.drift-alert.severity-high {
+  background: rgba(239, 68, 68, 0.1);
+  border-left-color: var(--accent-red);
+}
+
+.drift-alert.severity-medium {
+  background: rgba(245, 158, 11, 0.1);
+  border-left-color: var(--accent-amber);
+}
+
+.drift-alert.severity-low {
+  background: rgba(59, 130, 246, 0.05);
+  border-left-color: var(--accent-blue);
+}
+
+.drift-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-1);
+}
+
+.drift-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.drift-meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.drift-description {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.drift-description strong {
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Annotation History Timeline
+   ============================================ */
+
+.annotation-history {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.annotation-history > summary {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-2) 0;
+}
+
+.annotation-history > summary:hover {
+  color: var(--text-primary);
+}
+
+.history-timeline {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0 0;
+  border-left: 2px solid var(--border-subtle);
+  padding-left: var(--space-4);
+}
+
+.history-item {
+  position: relative;
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-2);
+}
+
+.history-item::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--space-4) - 5px);
+  top: var(--space-3);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-default);
+}
+
+.history-item.current::before {
+  background: var(--accent-blue);
+}
+
+.history-item.past {
+  opacity: 0.7;
+}
+
+.history-meta {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.history-source {
+  font-size: var(--text-xs);
+  padding: 1px 4px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  text-transform: capitalize;
+}
+
+.history-time {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.history-text {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ============================================
+   Drift History Timeline
+   ============================================ */
+
+.drift-history {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.drift-history > summary {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-2) 0;
+}
+
+.drift-history > summary:hover {
+  color: var(--text-primary);
+}
+
+.drift-type-badge {
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: capitalize;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+}
+
+.drift-type-badge.semantic {
+  background: var(--accent-orange-subtle);
+  color: var(--accent-orange);
+}
+
+.drift-type-badge.implementation {
+  background: var(--accent-blue-subtle);
+  color: var(--accent-blue);
+}
+
+.severity-badge {
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: capitalize;
+}
+
+.severity-badge.severity-low {
+  background: var(--accent-green-subtle);
+  color: var(--accent-green);
+}
+
+.severity-badge.severity-medium {
+  background: var(--accent-orange-subtle);
+  color: var(--accent-orange);
+}
+
+.severity-badge.severity-high {
+  background: var(--accent-red-subtle);
+  color: var(--accent-red);
+}
+
+.history-item.severity-high::before {
+  background: var(--accent-red);
+}
+
+.history-item.severity-medium::before {
+  background: var(--accent-orange);
+}
+
+.history-item.severity-low::before {
+  background: var(--accent-green);
+}
+
+.drift-resolved {
+  font-size: var(--text-xs);
+  color: var(--accent-green);
+  margin: var(--space-1) 0 0 0;
+  font-style: italic;
+}
+
+.history-more {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--space-2) 0;
+}

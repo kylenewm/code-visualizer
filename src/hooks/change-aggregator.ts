@@ -10,6 +10,10 @@ import { dirname } from 'path';
 import type { FileChangeEvent } from './adapter.js';
 import { AnalysisPipeline } from '../analyzer/pipeline.js';
 import type { CodeGraph } from '../graph/graph.js';
+import { getDriftDetector } from '../analyzer/drift-detector.js';
+import type { NodeChange } from '../analyzer/drift-detector.js';
+import { getAnnotationStore } from '../storage/annotation-store.js';
+import { getTouchedStore } from '../storage/touched-store.js';
 
 // ============================================
 // Types
@@ -344,8 +348,35 @@ export class ChangeAggregator extends EventEmitter {
         if (this.graph) {
           // Update graph with new nodes and edges (with lastModified timestamp)
           const now = Date.now();
+          const annotationStore = getAnnotationStore();
+
           for (const node of analysisResult.nodes) {
             this.graph.addNode({ ...node, lastModified: now });
+
+            // Re-attach persisted annotation if available (using stableId for stability)
+            // Also track this function as "touched" for annotation review
+            if (node.kind === 'function' || node.kind === 'method') {
+              // Mark as touched for annotation tracking
+              const touchedStore = getTouchedStore();
+              try {
+                touchedStore.markTouched(node.stableId, node.filePath);
+              } catch {
+                // Ignore errors - database may not be initialized in tests
+              }
+
+              const annotation = annotationStore.getCurrent(node.stableId);
+              if (annotation) {
+                const addedNode = this.graph.getNode(node.id);
+                if (addedNode) {
+                  addedNode.annotation = {
+                    text: annotation.text,
+                    contentHash: annotation.contentHash,
+                    generatedAt: annotation.createdAt,
+                    source: annotation.source,
+                  };
+                }
+              }
+            }
           }
           for (const edge of analysisResult.edges) {
             this.graph.addEdge(edge);
@@ -365,6 +396,42 @@ export class ChangeAggregator extends EventEmitter {
     if (this.graph) {
       for (const filePath of deletedFiles) {
         this.graph.clearFile(filePath);
+      }
+    }
+
+    // Detect drift for analyzed nodes
+    if (this.graph) {
+      const driftDetector = getDriftDetector();
+      const driftResults = [];
+
+      for (const filePath of result.analyzedFiles) {
+        const fileNodes = this.graph.getFileNodes(filePath);
+        for (const node of fileNodes) {
+          if (node.kind !== 'function' && node.kind !== 'method') continue;
+          if (!node.contentHash) continue;
+
+          const change: NodeChange = {
+            nodeId: node.id,
+            stableId: node.stableId,
+            newHash: node.contentHash,
+            newSignature: node.signature,
+          };
+
+          const driftResult = driftDetector.detectDrift(change);
+          if (driftResult.detected) {
+            driftResults.push({
+              nodeId: node.id,
+              driftId: driftResult.driftId,
+              severity: driftResult.analysis?.severity,
+              driftType: driftResult.analysis?.driftType,
+            });
+          }
+        }
+      }
+
+      // Emit drift events
+      if (driftResults.length > 0) {
+        this.emit('drift:detected', driftResults);
       }
     }
 

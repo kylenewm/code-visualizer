@@ -29,6 +29,12 @@ A developer tool that provides real-time transparency into AI-assisted coding by
 - Always tag edge confidence as 'exact', 'typechecked', or 'heuristic' - never leave unspecified
 - New analysis must cancel in-flight analysis for the same transaction - never queue multiple analyses
 
+### Semantic Annotations
+- Annotations must always include contentHash from time of generation - never store annotation without hash
+- Annotation text must be 1-3 sentences max - never generate verbose multi-paragraph annotations
+- Never auto-regenerate annotations without user confirmation - staleness is informational only
+- Annotation source must be tagged as 'claude' or 'manual' - never leave unspecified
+
 ### Storage & Privacy
 - Never store file content directly - always use content hash with separate blob storage
 - All file paths in exclude patterns must be honored - never analyze or store excluded files
