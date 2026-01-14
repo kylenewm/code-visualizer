@@ -10,8 +10,8 @@ import { z } from 'zod';
 const API_BASE = process.env.CODEFLOW_API || 'http://localhost:3001';
 
 // Helper to fetch from CodeFlow API
-async function fetchAPI(endpoint: string): Promise<unknown> {
-  const res = await fetch(`${API_BASE}${endpoint}`);
+async function fetchAPI(endpoint: string, options?: RequestInit): Promise<unknown> {
+  const res = await fetch(`${API_BASE}${endpoint}`, options);
   if (!res.ok) {
     throw new Error(`API error: ${res.status} ${res.statusText}`);
   }
@@ -302,6 +302,54 @@ server.registerTool(
       content: [{
         type: 'text',
         text: `Codebase stats:\n- Files: ${data.graph.fileCount}\n- Functions: ${data.graph.functionCount}\n- Classes: ${data.graph.classCount}\n- Total nodes: ${data.graph.nodeCount}\n- Call edges: ${data.graph.edgeCount}`
+      }],
+    };
+  }
+);
+
+// Tool: Evaluate observability rules
+server.registerTool(
+  'evaluate_rules',
+  {
+    title: 'Evaluate Rules',
+    description: 'Evaluate observability rules and return any violations (missing annotations, stale docs, drift, concept shifts)',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const data = await fetchAPI('/api/rules/evaluate', { method: 'POST' }) as {
+      evaluatedAt: number;
+      violationCount: number;
+      violations: Array<{
+        ruleName: string;
+        condition: string;
+        targets: Array<{ name: string; reason: string }>;
+      }>;
+    };
+
+    if (data.violationCount === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: '✓ No rule violations. All observability checks pass.'
+        }],
+      };
+    }
+
+    const lines = [`⚠️ ${data.violationCount} rule violation(s):\n`];
+    for (const v of data.violations) {
+      lines.push(`**${v.ruleName}** (${v.condition}): ${v.targets.length} issue(s)`);
+      for (const t of v.targets.slice(0, 3)) {
+        lines.push(`  - ${t.name}: ${t.reason}`);
+      }
+      if (v.targets.length > 3) {
+        lines.push(`  ... and ${v.targets.length - 3} more`);
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
       }],
     };
   }
