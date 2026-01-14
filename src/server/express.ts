@@ -18,6 +18,8 @@ import { getDriftDetector } from '../analyzer/drift-detector.js';
 import { getModuleSummarizer } from '../analyzer/module-summarizer.js';
 import { getConceptShiftDetector } from '../analyzer/concept-shift.js';
 import { getDatabase } from '../storage/sqlite.js';
+import { getRuleStore } from '../storage/rule-store.js';
+import { getRuleEvaluator } from '../analyzer/rule-evaluator.js';
 
 /**
  * Check if the database is initialized
@@ -41,7 +43,7 @@ export interface ServerConfig {
 }
 
 export interface WebSocketMessage {
-  type: 'graph:update' | 'analysis:start' | 'analysis:complete' | 'change' | 'change:recorded' | 'drift:detected' | 'stats' | 'pong';
+  type: 'graph:update' | 'analysis:start' | 'analysis:complete' | 'change' | 'change:recorded' | 'drift:detected' | 'rules:violation' | 'stats' | 'pong';
   payload: unknown;
 }
 
@@ -811,6 +813,133 @@ export class ApiServer {
       res.json({ success, stableId });
     });
 
+    // ========================================
+    // Rules API
+    // ========================================
+
+    // Get all rules
+    this.app.get('/api/rules', (_req: Request, res: Response) => {
+      const ruleStore = getRuleStore();
+      const rules = ruleStore.getAllRules();
+      res.json(rules);
+    });
+
+    // Get rule stats
+    this.app.get('/api/rules/stats', (_req: Request, res: Response) => {
+      const ruleStore = getRuleStore();
+      const stats = ruleStore.getStats();
+      res.json(stats);
+    });
+
+    // Get recent violations
+    this.app.get('/api/rules/violations', (req: Request, res: Response) => {
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const ruleStore = getRuleStore();
+      const violations = ruleStore.getRecentViolations(limit);
+      res.json(violations);
+    });
+
+    // Get single rule
+    this.app.get('/api/rules/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const ruleStore = getRuleStore();
+      const rule = ruleStore.getRule(id);
+      if (!rule) {
+        res.status(404).json({ error: 'Rule not found' });
+        return;
+      }
+      res.json(rule);
+    });
+
+    // Create rule
+    this.app.post('/api/rules', (req: Request, res: Response) => {
+      const { id, name, condition, threshold, action, enabled } = req.body;
+      if (!id || !name || !condition || !action) {
+        res.status(400).json({ error: 'Missing required fields: id, name, condition, action' });
+        return;
+      }
+      const ruleStore = getRuleStore();
+      try {
+        ruleStore.saveRule({ id, name, condition, threshold, action, enabled: enabled ?? true });
+        res.status(201).json({ success: true, id });
+      } catch (err) {
+        res.status(400).json({ error: (err as Error).message });
+      }
+    });
+
+    // Update rule
+    this.app.patch('/api/rules/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const ruleStore = getRuleStore();
+      const success = ruleStore.updateRule(id, req.body);
+      if (!success) {
+        res.status(404).json({ error: 'Rule not found' });
+        return;
+      }
+      res.json({ success: true, id });
+    });
+
+    // Delete rule
+    this.app.delete('/api/rules/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const ruleStore = getRuleStore();
+      const success = ruleStore.deleteRule(id);
+      if (!success) {
+        res.status(404).json({ error: 'Rule not found' });
+        return;
+      }
+      res.json({ success: true, id });
+    });
+
+    // Get evaluation history for a rule
+    this.app.get('/api/rules/:id/evaluations', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const limit = this.getQueryAsInt(req.query.limit, 50);
+      const ruleStore = getRuleStore();
+      const evaluations = ruleStore.getEvaluationHistory(id, limit);
+      res.json(evaluations);
+    });
+
+    // Evaluate all enabled rules
+    this.app.post('/api/rules/evaluate', (_req: Request, res: Response) => {
+      const evaluator = getRuleEvaluator();
+      const violations = evaluator.evaluateAll();
+      const result = {
+        evaluatedAt: Date.now(),
+        violationCount: violations.length,
+        violations,
+      };
+
+      // Broadcast violations if any
+      if (violations.length > 0) {
+        this.broadcast({ type: 'rules:violation', payload: violations });
+      }
+
+      res.json(result);
+    });
+
+    // Evaluate a single rule
+    this.app.post('/api/rules/:id/evaluate', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const ruleStore = getRuleStore();
+      const rule = ruleStore.getRule(id);
+      if (!rule) {
+        res.status(404).json({ error: 'Rule not found' });
+        return;
+      }
+      const evaluator = getRuleEvaluator();
+      const result = evaluator.evaluateRule(rule);
+
+      // Record evaluation
+      ruleStore.recordEvaluation(
+        rule.id,
+        result.violated,
+        result.violated ? { targetCount: result.targets.length } : undefined
+      );
+
+      res.json(result);
+    });
+
     // Error handler
     this.app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
       console.error('API Error:', err);
@@ -875,6 +1004,10 @@ export class ApiServer {
 
   setGraph(graph: CodeGraph): void {
     this.graph = graph;
+
+    // Wire up rule evaluator
+    const evaluator = getRuleEvaluator();
+    evaluator.setGraph(graph);
 
     // Broadcast initial graph to connected clients
     this.broadcast({

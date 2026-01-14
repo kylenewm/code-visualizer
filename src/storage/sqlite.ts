@@ -190,6 +190,68 @@ const MIGRATIONS: Migration[] = [
         WHERE concept_shifted = 1;
     `,
   },
+  {
+    version: 8,
+    description: 'Create observability_rules and rule_evaluations tables',
+    up: `
+      -- Rules table
+      CREATE TABLE IF NOT EXISTS observability_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        condition TEXT NOT NULL CHECK(condition IN ('missing_annotation', 'stale', 'high_drift', 'uncovered_module')),
+        threshold REAL,
+        action TEXT NOT NULL CHECK(action IN ('warn', 'block', 'auto_regenerate')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rules_enabled
+        ON observability_rules(enabled)
+        WHERE enabled = 1;
+
+      -- Rule evaluation history
+      CREATE TABLE IF NOT EXISTS rule_evaluations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_id TEXT NOT NULL REFERENCES observability_rules(id) ON DELETE CASCADE,
+        evaluated_at INTEGER NOT NULL,
+        violated INTEGER NOT NULL,
+        context TEXT,
+        action_taken TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rule_evaluations_rule_id
+        ON rule_evaluations(rule_id, evaluated_at);
+      CREATE INDEX IF NOT EXISTS idx_rule_evaluations_violated
+        ON rule_evaluations(violated, evaluated_at)
+        WHERE violated = 1;
+    `,
+  },
+  {
+    version: 9,
+    description: 'Add concept_shifted condition to rules',
+    up: `
+      -- Recreate rules table with updated constraint
+      CREATE TABLE IF NOT EXISTS observability_rules_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        condition TEXT NOT NULL CHECK(condition IN ('missing_annotation', 'stale', 'high_drift', 'uncovered_module', 'concept_shifted')),
+        threshold REAL,
+        action TEXT NOT NULL CHECK(action IN ('warn', 'block', 'auto_regenerate')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      INSERT INTO observability_rules_new SELECT * FROM observability_rules;
+      DROP TABLE observability_rules;
+      ALTER TABLE observability_rules_new RENAME TO observability_rules;
+
+      CREATE INDEX IF NOT EXISTS idx_rules_enabled
+        ON observability_rules(enabled)
+        WHERE enabled = 1;
+    `,
+  },
 ];
 
 // ============================================

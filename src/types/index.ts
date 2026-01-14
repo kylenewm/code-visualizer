@@ -356,7 +356,7 @@ export interface DriftSummary {
 // Observability Rules (Future)
 // ============================================
 
-export type RuleCondition = 'missing_annotation' | 'stale' | 'high_drift' | 'uncovered_module';
+export type RuleCondition = 'missing_annotation' | 'stale' | 'high_drift' | 'uncovered_module' | 'concept_shifted';
 export type RuleAction = 'warn' | 'block' | 'auto_regenerate';
 
 export interface ObservabilityRule {
