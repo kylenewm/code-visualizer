@@ -20,6 +20,8 @@ import { getConceptShiftDetector } from '../analyzer/concept-shift.js';
 import { getDatabase } from '../storage/sqlite.js';
 import { getRuleStore } from '../storage/rule-store.js';
 import { getRuleEvaluator } from '../analyzer/rule-evaluator.js';
+import { getConceptLayer } from '../analyzer/concept-layer.js';
+import { getSnapshotGenerator } from '../analyzer/semantic-snapshot.js';
 
 /**
  * Check if the database is initialized
@@ -40,6 +42,7 @@ export interface ServerConfig {
   port: number;
   host: string;
   corsOrigins: string[];
+  projectPath?: string;
 }
 
 export interface WebSocketMessage {
@@ -127,6 +130,13 @@ export class ApiServer {
         graph: graphStats,
         detector: detectorStats,
       });
+    });
+
+    // Get semantic snapshot
+    this.app.get('/api/snapshot', (_req: Request, res: Response) => {
+      const snapshotGenerator = getSnapshotGenerator();
+      const snapshot = snapshotGenerator.generate(this.config.projectPath || 'unknown');
+      res.json(snapshot);
     });
 
     // Get full graph
@@ -346,7 +356,7 @@ export class ApiServer {
     });
 
     // Update annotation for a single node (with persistence)
-    this.app.post('/api/nodes/:id/annotation', (req: Request, res: Response) => {
+    this.app.post('/api/nodes/:id/annotation', async (req: Request, res: Response) => {
       if (!this.graph) {
         return res.status(503).json({ error: 'Graph not initialized' });
       }
@@ -368,15 +378,45 @@ export class ApiServer {
       let versionId: number | undefined;
       let isNew = true;
       let supersededId: number | undefined;
+      let conceptShiftDetected = false;
 
       // Persist to database if initialized
       if (isDatabaseInitialized()) {
         try {
           const annotationStore = getAnnotationStore();
+
+          // Get old annotation before saving new one (for concept shift detection)
+          const oldAnnotation = annotationStore.getCurrent(node.stableId);
+
           const result = annotationStore.saveAnnotation(nodeId, node.stableId, text, contentHash, annotationSource);
           versionId = result.versionId;
           isNew = result.isNew;
           supersededId = result.supersededId;
+
+          // Detect concept shift if there was a previous annotation
+          if (oldAnnotation && oldAnnotation.text !== text) {
+            try {
+              const conceptShiftDetector = getConceptShiftDetector();
+              const shiftResult = await conceptShiftDetector.semanticPreCheck(oldAnnotation.text, text);
+
+              if (shiftResult.result === 'SHIFTED' || (shiftResult.result === 'UNCLEAR' && shiftResult.similarity < 0.6)) {
+                // Record the concept shift
+                const conceptLayer = getConceptLayer();
+                conceptLayer.recordConceptShift(
+                  nodeId,
+                  node.stableId,
+                  null, // fromDomainId - would need to look up
+                  null, // toDomainId
+                  shiftResult.reason || `Semantic similarity: ${(shiftResult.similarity * 100).toFixed(0)}%`,
+                  shiftResult.similarity
+                );
+                conceptShiftDetected = true;
+                console.log(`Concept shift detected for ${node.name}: ${shiftResult.reason}`);
+              }
+            } catch (shiftError) {
+              console.warn('Failed to detect concept shift:', shiftError);
+            }
+          }
 
           // Resolve any drift for this node (by stableId)
           const driftDetector = getDriftDetector();
@@ -410,6 +450,7 @@ export class ApiServer {
         versionId,
         isNew,
         supersededId,
+        conceptShiftDetected,
         node,
       });
     });
@@ -940,6 +981,125 @@ export class ApiServer {
       res.json(result);
     });
 
+    // ========================
+    // Concepts API
+    // ========================
+
+    // Get all concept domains
+    this.app.get('/api/concepts/domains', (_req: Request, res: Response) => {
+      const conceptLayer = getConceptLayer();
+      const domains = conceptLayer.getAllDomains();
+      res.json({ domains });
+    });
+
+    // Get a specific domain
+    this.app.get('/api/concepts/domains/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const conceptLayer = getConceptLayer();
+      const domain = conceptLayer.getDomain(id);
+      if (!domain) {
+        res.status(404).json({ error: 'Domain not found' });
+        return;
+      }
+      const members = conceptLayer.getDomainMembers(id);
+      res.json({ domain, members });
+    });
+
+    // Create a concept domain
+    this.app.post('/api/concepts/domains', (req: Request, res: Response) => {
+      const { name, description } = req.body;
+      if (!name) {
+        res.status(400).json({ error: 'Name is required' });
+        return;
+      }
+      const conceptLayer = getConceptLayer();
+      const domain = conceptLayer.createDomain(name, description);
+      res.status(201).json(domain);
+    });
+
+    // Update a concept domain
+    this.app.patch('/api/concepts/domains/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const { name, description } = req.body;
+      const conceptLayer = getConceptLayer();
+      const success = conceptLayer.updateDomain(id, { name, description });
+      if (!success) {
+        res.status(404).json({ error: 'Domain not found' });
+        return;
+      }
+      const domain = conceptLayer.getDomain(id);
+      res.json(domain);
+    });
+
+    // Delete a concept domain
+    this.app.delete('/api/concepts/domains/:id', (req: Request, res: Response) => {
+      const id = this.getParamAsString(req.params.id);
+      const conceptLayer = getConceptLayer();
+      const success = conceptLayer.deleteDomain(id);
+      if (!success) {
+        res.status(404).json({ error: 'Domain not found' });
+        return;
+      }
+      res.status(204).send();
+    });
+
+    // Semantic search
+    this.app.get('/api/concepts/search', async (req: Request, res: Response) => {
+      const query = req.query.q as string;
+      if (!query) {
+        res.status(400).json({ error: 'Query parameter q is required' });
+        return;
+      }
+      const limit = parseInt(req.query.limit as string) || 10;
+      const conceptLayer = getConceptLayer();
+      const results = await conceptLayer.semanticSearch(query, limit);
+      res.json({ results });
+    });
+
+    // Get concept shifts
+    this.app.get('/api/concepts/shifts', (req: Request, res: Response) => {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const unreviewed = req.query.unreviewed === 'true';
+      const conceptLayer = getConceptLayer();
+      const shifts = unreviewed
+        ? conceptLayer.getUnreviewedShifts(limit)
+        : conceptLayer.getRecentShifts(limit);
+
+      // Enrich with domain names
+      const enrichedShifts = shifts.map(s => ({
+        ...s,
+        fromDomain: s.fromDomainId ? conceptLayer.getDomain(s.fromDomainId)?.name : undefined,
+        toDomain: s.toDomainId ? conceptLayer.getDomain(s.toDomainId)?.name : undefined,
+        reviewed: !!s.reviewedAt,
+      }));
+
+      res.json({ shifts: enrichedShifts });
+    });
+
+    // Mark a concept shift as reviewed
+    this.app.post('/api/concepts/shifts/:id/review', (req: Request, res: Response) => {
+      const id = parseInt(this.getParamAsString(req.params.id));
+      const { reviewedBy } = req.body;
+      if (!reviewedBy) {
+        res.status(400).json({ error: 'reviewedBy is required' });
+        return;
+      }
+      const conceptLayer = getConceptLayer();
+      const success = conceptLayer.markShiftReviewed(id, reviewedBy);
+      if (!success) {
+        res.status(404).json({ error: 'Shift not found' });
+        return;
+      }
+      res.json({ success: true });
+    });
+
+    // Get concept layer stats
+    this.app.get('/api/concepts/stats', (_req: Request, res: Response) => {
+      const conceptLayer = getConceptLayer();
+      const stats = conceptLayer.getStats();
+      res.json(stats);
+    });
+
     // Error handler
     this.app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
       console.error('API Error:', err);
@@ -1008,6 +1168,14 @@ export class ApiServer {
     // Wire up rule evaluator
     const evaluator = getRuleEvaluator();
     evaluator.setGraph(graph);
+
+    // Wire up concept layer for semantic search
+    const conceptLayer = getConceptLayer();
+    conceptLayer.setGraph(graph);
+
+    // Wire up snapshot generator
+    const snapshotGenerator = getSnapshotGenerator();
+    snapshotGenerator.setGraph(graph);
 
     // Broadcast initial graph to connected clients
     this.broadcast({

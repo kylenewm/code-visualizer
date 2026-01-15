@@ -7,6 +7,8 @@ import { getRuleStore } from '../storage/rule-store.js';
 import { getAnnotationStore } from '../storage/annotation-store.js';
 import { getModuleStore } from '../storage/module-store.js';
 import { getDriftStore } from '../storage/drift-store.js';
+import { getInvariantChecker } from './invariants.js';
+import { getImpactAnalyzer } from './impact-analyzer.js';
 import type { CodeGraph } from '../graph/graph.js';
 import type { ObservabilityRule, RuleCondition } from '../types/index.js';
 
@@ -29,6 +31,12 @@ export interface ViolationTarget {
   name: string;
   filePath: string;
   reason: string;
+  /** Impact analysis - how many functions are affected */
+  impact?: {
+    directCallers: number;
+    totalAffected: number;
+    publicAPIAffected: number;
+  };
 }
 
 export interface EvaluationResult {
@@ -47,6 +55,9 @@ export class RuleEvaluator {
 
   setGraph(graph: CodeGraph): void {
     this.graph = graph;
+    // Also update the invariant checker and impact analyzer
+    getInvariantChecker().setGraph(graph);
+    getImpactAnalyzer().setGraph(graph);
   }
 
   /**
@@ -102,6 +113,8 @@ export class RuleEvaluator {
         return this.checkUncoveredModules(rule, evaluatedAt);
       case 'concept_shifted':
         return this.checkConceptShifted(rule, evaluatedAt);
+      case 'invariant_violation':
+        return this.checkInvariantViolations(rule, evaluatedAt);
       default:
         return { rule, violated: false, targets: [], evaluatedAt };
     }
@@ -188,6 +201,7 @@ export class RuleEvaluator {
    */
   private checkHighDrift(rule: ObservabilityRule, evaluatedAt: number): EvaluationResult {
     const driftStore = getDriftStore();
+    const impactAnalyzer = getImpactAnalyzer();
     const highDrift = driftStore.getUnresolvedBySeverity('high');
     const targets: ViolationTarget[] = [];
 
@@ -197,12 +211,23 @@ export class RuleEvaluator {
       const filePath = parts[0] || 'unknown';
       const name = parts.length >= 3 ? parts[2] : drift.nodeId;
 
+      // Get impact analysis for this node
+      const impactResult = impactAnalyzer.analyzeImpact(drift.nodeId);
+      const impactSummary = impactResult
+        ? ` - affects ${impactResult.total} function(s)${impactResult.exportedCount > 0 ? ` (${impactResult.exportedCount} public API)` : ''}`
+        : '';
+
       targets.push({
         type: 'function',
         id: drift.nodeId,
         name,
         filePath,
-        reason: `High-severity drift detected at ${new Date(drift.detectedAt).toISOString()}`,
+        reason: `High-severity drift detected${impactSummary}`,
+        impact: impactResult ? {
+          directCallers: impactResult.directCallers.length,
+          totalAffected: impactResult.total,
+          publicAPIAffected: impactResult.exportedCount,
+        } : undefined,
       });
     }
 
@@ -248,6 +273,7 @@ export class RuleEvaluator {
    */
   private checkConceptShifted(rule: ObservabilityRule, evaluatedAt: number): EvaluationResult {
     const driftStore = getDriftStore();
+    const impactAnalyzer = getImpactAnalyzer();
     const conceptShifts = driftStore.getConceptShifts();
     const targets: ViolationTarget[] = [];
 
@@ -258,17 +284,57 @@ export class RuleEvaluator {
         const filePath = parts[0] || 'unknown';
         const name = parts.length >= 3 ? parts[2] : drift.nodeId;
 
+        // Get impact analysis for this node
+        const impactResult = impactAnalyzer.analyzeImpact(drift.nodeId);
+        const impactSummary = impactResult && impactResult.total > 0
+          ? ` - affects ${impactResult.total} function(s)${impactResult.exportedCount > 0 ? ` (${impactResult.exportedCount} public API)` : ''}`
+          : '';
+
+        const baseReason = drift.shiftReason || 'Purpose/intent of function changed - review needed';
+
         targets.push({
           type: 'function',
           id: drift.nodeId,
           name,
           filePath,
-          reason: drift.shiftReason || 'Purpose/intent of function changed - review needed',
+          reason: `${baseReason}${impactSummary}`,
+          impact: impactResult ? {
+            directCallers: impactResult.directCallers.length,
+            totalAffected: impactResult.total,
+            publicAPIAffected: impactResult.exportedCount,
+          } : undefined,
         });
       }
     }
 
     const threshold = rule.threshold ?? 0; // Default: no unreviewed concept shifts allowed
+    const violated = targets.length > threshold;
+
+    return { rule, violated, targets: violated ? targets : [], evaluatedAt };
+  }
+
+  /**
+   * Check for invariant violations across all hardcoded invariants
+   */
+  private checkInvariantViolations(rule: ObservabilityRule, evaluatedAt: number): EvaluationResult {
+    const invariantChecker = getInvariantChecker();
+    const summary = invariantChecker.getSummary();
+    const targets: ViolationTarget[] = [];
+
+    // Collect all violations from all invariants
+    for (const violation of summary.violations) {
+      for (const target of violation.targets) {
+        targets.push({
+          type: target.type,
+          id: target.id,
+          name: target.name,
+          filePath: target.filePath,
+          reason: `[${violation.invariant.name}] ${target.reason}`,
+        });
+      }
+    }
+
+    const threshold = rule.threshold ?? 0; // Default: no invariant violations allowed
     const violated = targets.length > threshold;
 
     return { rule, violated, targets: violated ? targets : [], evaluatedAt };

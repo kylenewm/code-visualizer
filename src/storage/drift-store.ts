@@ -26,6 +26,8 @@ export interface DriftEvent {
   conceptShifted?: boolean | null;
   /** Explanation of what conceptually changed */
   shiftReason?: string | null;
+  /** Semantic similarity score (0-1) from embedding comparison */
+  semanticSimilarity?: number | null;
 }
 
 export interface DriftEventInput {
@@ -97,7 +99,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE id = ?
     `);
@@ -124,7 +127,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE stable_id = ?
       ORDER BY detected_at DESC
@@ -152,7 +156,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE stable_id = ? AND resolved_at IS NULL
       ORDER BY detected_at DESC
@@ -181,7 +186,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE resolved_at IS NULL
       ORDER BY
@@ -216,7 +222,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE resolved_at IS NULL AND severity = ?
       ORDER BY detected_at DESC
@@ -337,7 +344,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       ORDER BY detected_at DESC
       LIMIT ?
@@ -365,7 +373,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE detected_at >= ? AND detected_at <= ?
       ORDER BY detected_at DESC
@@ -428,6 +437,21 @@ export class DriftStore {
   }
 
   /**
+   * Update semantic similarity score on a drift event
+   */
+  updateSemanticSimilarity(driftId: number, similarity: number): boolean {
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      UPDATE drift_events
+      SET semantic_similarity = ?
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(similarity, driftId);
+    return result.changes > 0;
+  }
+
+  /**
    * Get drift events with concept shifts
    */
   getConceptShifts(limit: number = 50): DriftEvent[] {
@@ -446,7 +470,8 @@ export class DriftStore {
         resolved_at as resolvedAt,
         resolution,
         concept_shifted as conceptShifted,
-        shift_reason as shiftReason
+        shift_reason as shiftReason,
+        semantic_similarity as semanticSimilarity
       FROM drift_events
       WHERE concept_shifted = 1
       ORDER BY detected_at DESC

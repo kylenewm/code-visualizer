@@ -355,6 +355,233 @@ server.registerTool(
   }
 );
 
+// Tool: Get concept map (semantic domains)
+server.registerTool(
+  'get_concept_map',
+  {
+    title: 'Get Concept Map',
+    description: 'Get all concept domains and their members - the semantic landscape of the codebase',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const data = await fetchAPI('/api/concepts/domains') as {
+      domains: Array<{
+        id: string;
+        name: string;
+        description?: string;
+        memberCount: number;
+      }>;
+    };
+
+    if (data.domains.length === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'No concept domains defined yet. Use /api/concepts/domains to create domains or run clustering.'
+        }],
+      };
+    }
+
+    const lines = ['Concept Map:\n'];
+    for (const d of data.domains) {
+      lines.push(`**${d.name}** (${d.memberCount} functions)`);
+      if (d.description) {
+        lines.push(`  ${d.description}`);
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
+      }],
+    };
+  }
+);
+
+// Tool: Query concepts (semantic search)
+server.registerTool(
+  'query_concepts',
+  {
+    title: 'Query Concepts',
+    description: 'Search for functions semantically similar to a natural language query',
+    inputSchema: z.object({
+      query: z.string().describe('Natural language description of what you\'re looking for'),
+    }),
+  },
+  async ({ query }) => {
+    const data = await fetchAPI(`/api/concepts/search?q=${encodeURIComponent(query)}`) as {
+      results: Array<{
+        name: string;
+        filePath: string;
+        annotation: string;
+        similarity: number;
+      }>;
+    };
+
+    if (data.results.length === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: `No functions found matching "${query}". Try a different query or ensure functions are annotated.`
+        }],
+      };
+    }
+
+    const lines = [`Functions matching "${query}":\n`];
+    for (const r of data.results.slice(0, 10)) {
+      lines.push(`**${r.name}** (${(r.similarity * 100).toFixed(0)}% match)`);
+      lines.push(`  ${r.filePath}`);
+      lines.push(`  ${r.annotation}`);
+      lines.push('');
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
+      }],
+    };
+  }
+);
+
+// Tool: Get concept shifts (purpose changes)
+server.registerTool(
+  'get_concept_shifts',
+  {
+    title: 'Get Concept Shifts',
+    description: 'Get recent concept shifts - when functions\' purposes changed',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const data = await fetchAPI('/api/concepts/shifts') as {
+      shifts: Array<{
+        nodeId: string;
+        fromDomain?: string;
+        toDomain?: string;
+        shiftReason?: string;
+        detectedAt: number;
+        reviewed: boolean;
+      }>;
+    };
+
+    if (data.shifts.length === 0) {
+      return {
+        content: [{
+          type: 'text',
+          text: 'No concept shifts detected. Purpose changes will appear here when annotations change significantly.'
+        }],
+      };
+    }
+
+    const lines = ['Recent Concept Shifts:\n'];
+    for (const s of data.shifts.slice(0, 10)) {
+      const from = s.fromDomain || '(new)';
+      const to = s.toDomain || '(unknown)';
+      const status = s.reviewed ? '[Reviewed]' : '[Needs Review]';
+      lines.push(`${status} ${s.nodeId.split(':').pop()}: ${from} → ${to}`);
+      if (s.shiftReason) {
+        lines.push(`  Reason: ${s.shiftReason}`);
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: lines.join('\n')
+      }],
+    };
+  }
+);
+
+// Tool: Get semantic snapshot (unified view)
+server.registerTool(
+  'get_semantic_snapshot',
+  {
+    title: 'Get Semantic Snapshot',
+    description: 'Get unified view of codebase: concepts, violations, hotspots. Use this to understand the codebase at a high level.',
+    inputSchema: z.object({}),
+  },
+  async () => {
+    const snapshot = await fetchAPI('/api/snapshot') as {
+      generatedAt: number;
+      project: string;
+      domains: Array<{
+        name: string;
+        description?: string;
+        memberCount: number;
+        topMembers: string[];
+      }>;
+      unreviewedShifts: Array<{
+        functionName: string;
+        filePath: string;
+        similarity: number;
+        reason?: string;
+      }>;
+      violations: Array<{
+        rule: string;
+        ruleName: string;
+        count: number;
+        examples: string[];
+      }>;
+      hotspots: Array<{
+        functionName: string;
+        filePath: string;
+        callerCount: number;
+      }>;
+      stats: {
+        totalFunctions: number;
+        annotatedCount: number;
+        domainCount: number;
+        violationCount: number;
+        shiftCount: number;
+      };
+    };
+
+    // Format for Claude consumption
+    let output = `# Semantic Snapshot (${new Date(snapshot.generatedAt).toLocaleTimeString()})\n\n`;
+
+    output += `## Stats\n`;
+    output += `- ${snapshot.stats.totalFunctions} functions (${snapshot.stats.annotatedCount} annotated)\n`;
+    output += `- ${snapshot.stats.domainCount} concept domains\n`;
+    output += `- ${snapshot.stats.violationCount} invariant violations\n`;
+    output += `- ${snapshot.stats.shiftCount} unreviewed shifts\n\n`;
+
+    if (snapshot.domains.length > 0) {
+      output += `## Concept Domains\n`;
+      for (const d of snapshot.domains) {
+        output += `- **${d.name}** (${d.memberCount} fn): ${d.topMembers.join(', ') || 'no members'}\n`;
+      }
+      output += '\n';
+    }
+
+    if (snapshot.unreviewedShifts.length > 0) {
+      output += `## Needs Review (concept shifted)\n`;
+      for (const s of snapshot.unreviewedShifts) {
+        output += `- ${s.functionName} (${(s.similarity * 100).toFixed(0)}% similar): ${s.reason || 'purpose changed'}\n`;
+      }
+      output += '\n';
+    }
+
+    if (snapshot.violations.length > 0) {
+      output += `## Violations\n`;
+      for (const v of snapshot.violations) {
+        output += `- **${v.ruleName}** (${v.count}): ${v.examples.join(', ')}\n`;
+      }
+      output += '\n';
+    }
+
+    if (snapshot.hotspots.length > 0) {
+      output += `## Hotspots (high impact)\n`;
+      for (const h of snapshot.hotspots) {
+        output += `- ${h.functionName} — ${h.callerCount} callers\n`;
+      }
+    }
+
+    return { content: [{ type: 'text', text: output }] };
+  }
+);
+
 // Run the server
 async function main() {
   const transport = new StdioServerTransport();

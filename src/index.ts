@@ -137,7 +137,7 @@ async function runServe(projectDir: string, port: number, watch: boolean): Promi
   }
 
   // Start server
-  const server = new ApiServer({ port });
+  const server = new ApiServer({ port, projectPath: projectDir });
   server.setGraph(graph);
 
   // Set up change detection

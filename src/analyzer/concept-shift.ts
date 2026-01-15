@@ -2,10 +2,16 @@
  * Concept Shift Detector
  * Compares old vs new annotations to detect when a function's PURPOSE changed,
  * not just its implementation.
+ *
+ * Uses semantic comparison (embeddings) as a pre-filter before Claude:
+ * - similarity >= 0.85 → SAME (skip Claude)
+ * - similarity 0.5-0.85 → UNCLEAR (use Claude)
+ * - similarity < 0.5 → SHIFTED (high confidence)
  */
 
 import { getDriftStore, type DriftEvent } from '../storage/drift-store.js';
 import { getAnnotationStore } from '../storage/annotation-store.js';
+import { getSemanticCompare } from './semantic-compare.js';
 
 // ============================================
 // Types
@@ -100,6 +106,95 @@ UNCLEAR`;
       oldAnnotation: '',
       newAnnotation: '',
       parsed: result !== 'UNCLEAR' || firstLine === 'UNCLEAR',
+    };
+  }
+
+  /**
+   * Pre-check using semantic similarity (embeddings)
+   * Returns a quick result if high confidence, or null if Claude check is needed
+   */
+  async semanticPreCheck(
+    oldAnnotation: string,
+    newAnnotation: string
+  ): Promise<{
+    result: ConceptShiftResult;
+    similarity: number;
+    needsClaude: boolean;
+    reason?: string;
+  }> {
+    const semanticCompare = getSemanticCompare();
+    const comparison = await semanticCompare.compare(oldAnnotation, newAnnotation);
+
+    if (comparison.classification === 'SAME') {
+      return {
+        result: 'SAME',
+        similarity: comparison.similarity,
+        needsClaude: false,
+        reason: `Semantic similarity ${(comparison.similarity * 100).toFixed(0)}% - purpose unchanged`,
+      };
+    }
+
+    if (comparison.classification === 'DIFFERENT') {
+      return {
+        result: 'SHIFTED',
+        similarity: comparison.similarity,
+        needsClaude: false,
+        reason: `Semantic similarity ${(comparison.similarity * 100).toFixed(0)}% - significant purpose change detected`,
+      };
+    }
+
+    // SIMILAR - need Claude to confirm
+    return {
+      result: 'UNCLEAR',
+      similarity: comparison.similarity,
+      needsClaude: true,
+      reason: `Semantic similarity ${(comparison.similarity * 100).toFixed(0)}% - needs Claude confirmation`,
+    };
+  }
+
+  /**
+   * Full concept shift analysis with semantic pre-check
+   * Returns early if embeddings give high confidence, otherwise falls back to Claude
+   */
+  async analyzeWithSemantics(
+    driftId: number,
+    newAnnotation: string
+  ): Promise<{
+    result: ConceptShiftResult;
+    similarity: number;
+    usedClaude: boolean;
+    reason?: string;
+    prompt?: ConceptShiftPrompt;
+  } | null> {
+    const oldAnnotation = this.getOldAnnotation(driftId);
+    if (!oldAnnotation) return null;
+
+    // First try semantic comparison
+    const preCheck = await this.semanticPreCheck(oldAnnotation, newAnnotation);
+
+    // Store similarity score
+    const driftStore = getDriftStore();
+    driftStore.updateSemanticSimilarity(driftId, preCheck.similarity);
+
+    if (!preCheck.needsClaude) {
+      // High confidence from embeddings - record result
+      this.recordResult(driftId, preCheck.result, preCheck.reason);
+      return {
+        result: preCheck.result,
+        similarity: preCheck.similarity,
+        usedClaude: false,
+        reason: preCheck.reason,
+      };
+    }
+
+    // Need Claude confirmation - generate prompt
+    const prompt = this.generatePrompt(oldAnnotation, newAnnotation);
+    return {
+      result: 'UNCLEAR',
+      similarity: preCheck.similarity,
+      usedClaude: true,
+      reason: preCheck.reason,
+      prompt,
     };
   }
 

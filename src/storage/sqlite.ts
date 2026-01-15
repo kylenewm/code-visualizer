@@ -252,6 +252,91 @@ const MIGRATIONS: Migration[] = [
         WHERE enabled = 1;
     `,
   },
+  {
+    version: 10,
+    description: 'Add invariant_violation condition to rules',
+    up: `
+      -- Recreate rules table with invariant_violation condition
+      CREATE TABLE IF NOT EXISTS observability_rules_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        condition TEXT NOT NULL CHECK(condition IN ('missing_annotation', 'stale', 'high_drift', 'uncovered_module', 'concept_shifted', 'invariant_violation')),
+        threshold REAL,
+        action TEXT NOT NULL CHECK(action IN ('warn', 'block', 'auto_regenerate')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      INSERT INTO observability_rules_new SELECT * FROM observability_rules;
+      DROP TABLE observability_rules;
+      ALTER TABLE observability_rules_new RENAME TO observability_rules;
+
+      CREATE INDEX IF NOT EXISTS idx_rules_enabled
+        ON observability_rules(enabled)
+        WHERE enabled = 1;
+    `,
+  },
+  {
+    version: 11,
+    description: 'Add semantic_similarity to drift_events',
+    up: `
+      -- Add semantic similarity score for concept shift detection
+      ALTER TABLE drift_events ADD COLUMN semantic_similarity REAL DEFAULT NULL;
+
+      -- Index for finding drift events with similarity scores
+      CREATE INDEX IF NOT EXISTS idx_drift_events_similarity
+        ON drift_events(semantic_similarity)
+        WHERE semantic_similarity IS NOT NULL;
+    `,
+  },
+  {
+    version: 12,
+    description: 'Create concept_domains and concept_shifts tables',
+    up: `
+      -- Concept domains (semantic clusters)
+      CREATE TABLE IF NOT EXISTS concept_domains (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        member_count INTEGER NOT NULL DEFAULT 0,
+        centroid_embedding BLOB,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- Domain membership (which functions belong to which domain)
+      CREATE TABLE IF NOT EXISTS concept_domain_members (
+        domain_id TEXT NOT NULL REFERENCES concept_domains(id) ON DELETE CASCADE,
+        node_id TEXT NOT NULL,
+        stable_id TEXT NOT NULL,
+        similarity REAL NOT NULL,
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY (domain_id, node_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_domain_members_stable_id
+        ON concept_domain_members(stable_id);
+
+      -- Concept shift events (when function moves between domains)
+      CREATE TABLE IF NOT EXISTS concept_shift_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        node_id TEXT NOT NULL,
+        stable_id TEXT NOT NULL,
+        from_domain_id TEXT REFERENCES concept_domains(id),
+        to_domain_id TEXT REFERENCES concept_domains(id),
+        shift_reason TEXT,
+        similarity REAL,
+        detected_at INTEGER NOT NULL,
+        reviewed_at INTEGER,
+        reviewed_by TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_concept_shifts_unreviewed
+        ON concept_shift_events(reviewed_at)
+        WHERE reviewed_at IS NULL;
+    `,
+  },
 ];
 
 // ============================================
