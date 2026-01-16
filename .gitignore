@@ -47,3 +47,7 @@ STATE.md
 # Test artifacts
 test-results/
 .playwright-mcp/
+
+# CodeFlow database (local analysis data)
+.codeflow/
+**/.codeflow/

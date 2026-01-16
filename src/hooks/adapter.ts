@@ -151,6 +151,42 @@ export class ClaudeHookAdapter extends EventEmitter {
 // ============================================
 
 /**
+ * Check for CodeFlow violations and report them to Claude
+ * Called after processing file changes to provide proactive feedback
+ */
+async function checkAndReportViolations(_filePath: string): Promise<void> {
+  try {
+    const response = await fetch('http://localhost:3001/api/rules/evaluate', {
+      method: 'POST',
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json() as {
+      violationCount: number;
+      violations: Array<{
+        ruleName: string;
+        targets: Array<{ name: string; reason: string }>;
+      }>;
+    };
+
+    if (data.violationCount > 0) {
+      // Output to stderr so Claude sees it
+      console.error(`\n[CodeFlow] ${data.violationCount} violation(s) detected:`);
+      for (const v of data.violations.slice(0, 3)) {
+        console.error(`  - ${v.ruleName}: ${v.targets.length} issue(s)`);
+      }
+      if (data.violations.length > 3) {
+        console.error(`  ... and ${data.violations.length - 3} more`);
+      }
+      console.error(`Run 'evaluate_rules' MCP tool for details.\n`);
+    }
+  } catch {
+    // Server not running, silently skip
+  }
+}
+
+/**
  * Read stdin and process as hook input
  * Used when this module is run as a Claude hook script
  */
@@ -170,6 +206,9 @@ export async function runAsHookScript(): Promise<void> {
   if (event) {
     // Output event as JSON for downstream processing
     console.log(JSON.stringify(event));
+
+    // Check for violations and report to Claude
+    await checkAndReportViolations(event.filePath);
   }
 }
 

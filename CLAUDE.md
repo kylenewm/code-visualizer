@@ -129,3 +129,28 @@ For non-trivial tasks:
 | LOG.md | History (append-only) |
 
 Long conversation → run `/save`
+
+---
+
+## Enforcement
+
+Pre-commit hook blocks forbidden paths. Check `.council/invariants.yaml` for list.
+
+**Forbidden (always blocked):**
+- `*.env`, `.env.*`, `.envrc` - secrets
+- `credentials/*`, `.secrets/*` - credentials
+- `**/secrets.yaml`, `**/api_keys.json` - config secrets
+- `.codeflow/*.db` - database files
+
+**Protected (blocked, use --no-verify to override):**
+- `package.json`, `tsconfig.json` - project config
+- `src/storage/sqlite.ts` - database schema
+- `.mcp.json` - MCP configuration
+
+```bash
+# Verify invariants before committing
+python scripts/check_invariants.py --diff HEAD~1
+
+# Override protected paths (use sparingly)
+git commit --no-verify
+```
