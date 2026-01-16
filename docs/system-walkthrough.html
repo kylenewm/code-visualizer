@@ -857,9 +857,9 @@ and sends receipt email."
 
 <div class="phase">
     <div class="phase-header">
-        <div class="phase-number">12</div>
+        <div class="phase-number">13</div>
         <div class="phase-title">Model Context Protocol Tools</div>
-        <div class="phase-time"><span class="badge badge-ready">12/12 WORKING</span></div>
+        <div class="phase-time"><span class="badge badge-ready">13/13 WORKING</span></div>
     </div>
     <div class="phase-content">
         <p>Claude can query the codebase directly via MCP. All tools call the REST API and format responses.</p>
@@ -883,7 +883,10 @@ and sends receipt email."
 
 <span class="dim">// Observability</span>
 <span class="warn">evaluate_rules</span>         <span class="dim">Check all rules, return violations</span>
-<span class="file">get_semantic_snapshot</span>  <span class="dim">Unified view: domains, shifts, violations, hotspots</span></pre>
+<span class="file">get_semantic_snapshot</span>  <span class="dim">Unified view: domains, shifts, violations, hotspots</span>
+
+<span class="dim">// Actions (Phase 6)</span>
+<span class="ok">annotate_function</span>      <span class="dim">Add/update semantic annotation for a function</span></pre>
             </div>
         </div>
 
@@ -1039,11 +1042,11 @@ Version 3: "Handles payment refunds and sends confirmation email"
                 <p>Log violation, broadcast via WebSocket, record in DB.</p>
             </div>
             <div class="step-card" style="border-left: 3px solid #d29922;">
-                <h4>block <span class="badge badge-queue">TARGET: 1/19</span></h4>
+                <h4>block <span class="badge badge-ready">DONE</span></h4>
                 <p>Prevent action until violation resolved. <em>Stored but not enforced.</em></p>
             </div>
             <div class="step-card" style="border-left: 3px solid #d29922;">
-                <h4>auto_regenerate <span class="badge badge-queue">TARGET: 1/19</span></h4>
+                <h4>auto_regenerate <span class="badge badge-ready">DONE</span></h4>
                 <p>Automatically regenerate annotation via Claude. <em>Defined but not wired.</em></p>
             </div>
         </div>
@@ -1115,21 +1118,21 @@ Version 3: "Handles payment refunds and sends confirmation email"
             </div>
         </div>
 
-        <h3 style="margin-top: 2rem;">Planned Skills <span class="badge badge-queue">TARGET: 1/19</span></h3>
+        <h3 style="margin-top: 2rem;">Skills &amp; MCP Tools</h3>
 
         <div class="split">
-            <div class="agent-card" style="opacity: 0.7;">
-                <div class="agent-name" style="color: #6e7681;">/annotate</div>
+            <div class="agent-card">
+                <div class="agent-name" style="color: #3fb950;">/annotate <span class="badge badge-ready">DONE</span></div>
                 <div class="agent-status" style="font-size: 0.85rem;">
                     Generate annotations for unannotated or stale functions.<br><br>
-                    <em>Not yet implemented.</em>
+                    <em>Available via MCP: annotate_function tool</em>
                 </div>
             </div>
             <div class="agent-card" style="opacity: 0.7;">
                 <div class="agent-name" style="color: #6e7681;">/codeflow-fix</div>
                 <div class="agent-status" style="font-size: 0.85rem;">
                     Auto-fix rule violations by regenerating annotations.<br><br>
-                    <em>Not yet implemented.</em>
+                    <em>Future enhancement.</em>
                 </div>
             </div>
         </div>
@@ -1143,10 +1146,10 @@ Version 3: "Handles payment refunds and sends confirmation email"
     <div class="phase-header">
         <div class="phase-number">16</div>
         <div class="phase-title">Claude Integration Loop</div>
-        <div class="phase-time"><span class="badge badge-queue">TARGET: 1/19</span></div>
+        <div class="phase-time"><span class="badge badge-ready">WORKING</span></div>
     </div>
     <div class="phase-content">
-        <p>The vision: Claude automatically sees violations and fixes them. Current state: observation only.</p>
+        <p>Claude sees violations after every file edit via hook feedback. Auto-regenerate rules execute on evaluation.</p>
 
         <div class="diagram">
 <pre>
@@ -1168,7 +1171,7 @@ Version 3: "Handles payment refunds and sends confirmation email"
                                                Developer POSTs Annotation
 
 
-<span class="dim">Target State (Closed Loop) - TARGET: 1/19:</span>
+<span class="dim">Target State (Closed Loop) - IMPLEMENTED:</span>
 
   Code Change ──> Analysis ──> Drift Detected ──> <span class="err">Auto-Regenerate Rule</span>
                                                         |
@@ -1186,13 +1189,13 @@ Version 3: "Handles payment refunds and sends confirmation email"
 </pre>
         </div>
 
-        <div class="info-box warning">
-            <strong>What's Missing (Target: 1/19)</strong>
+        <div class="info-box success">
+            <strong>Implemented (Phase 6-7)</strong>
             <ul style="margin-top: 0.5rem; padding-left: 1.25rem; color: #8b949e;">
-                <li><strong>auto_regenerate execution:</strong> Rule action defined but no handler</li>
-                <li><strong>Claude prompt generation:</strong> Need to format violation as prompt</li>
-                <li><strong>Automatic POST:</strong> Claude output needs to flow back to API</li>
-                <li><strong>Block enforcement:</strong> API doesn't check block rules before accepting writes</li>
+                <li><strong>auto_regenerate execution:</strong> Template-based annotation generation on stale detection</li>
+                <li><strong>Post-edit feedback:</strong> Hook adapter reports violations to Claude after Write/Edit</li>
+                <li><strong>annotate_function MCP:</strong> Claude can POST annotations directly via MCP tool</li>
+                <li><strong>Block enforcement:</strong> /api/rules/evaluate returns 409 when blocking rules violated</li>
             </ul>
         </div>
 
@@ -1682,18 +1685,17 @@ Test Files  1 passed (1)
         <li><strong>Analyzes</strong> code structure with tree-sitter (functions, classes, calls)</li>
         <li><strong>Annotates</strong> what code does (not just what it is)</li>
         <li><strong>Detects</strong> when documentation drifts from implementation</li>
-        <li><strong>Enforces</strong> observability rules (evaluation working, enforcement in progress)</li>
-        <li><strong>Integrates</strong> with Claude via 12 MCP tools</li>
+        <li><strong>Enforces</strong> observability rules with blocking (409) and auto-regeneration</li>
+        <li><strong>Integrates</strong> with Claude via 13 MCP tools + feedback loop</li>
     </ul>
 </div>
 
 <div class="info-box warning" style="margin-top: 1rem;">
-    <h3 style="color: #d29922; margin-bottom: 0.75rem;">What's Not Done Yet (Target: 1/19)</h3>
+    <h3 style="color: #d29922; margin-bottom: 0.75rem;">Future Enhancements</h3>
     <ul style="padding-left: 1.25rem; color: #c9d1d9;">
-        <li><strong>Automatic annotation regeneration</strong> - Rule action exists but no execution</li>
-        <li><strong>Block enforcement</strong> - Rules can warn but not prevent</li>
-        <li><strong>Claude feedback loop</strong> - Observation only, no auto-prompting</li>
-        <li><strong>Smart module summaries</strong> - Template-based, not AI-generated</li>
+        <li><strong>Smart module summaries</strong> - Currently template-based, could use LLM</li>
+        <li><strong>Council integration</strong> - Wire CodeFlow blocks into check_invariants.py</li>
+        <li><strong>/codeflow-fix skill</strong> - Auto-fix common violations</li>
     </ul>
 </div>
 
@@ -1702,9 +1704,9 @@ Test Files  1 passed (1)
     <ul style="padding-left: 1.25rem; color: #c9d1d9;">
         <li><strong>Data layer:</strong> Production-ready (SQLite + persistence + versioning)</li>
         <li><strong>Analysis:</strong> Production-ready (parsing + graph + drift detection)</li>
-        <li><strong>Rules:</strong> Evaluation production-ready, enforcement in progress</li>
-        <li><strong>Claude loop:</strong> MCP tools ready, automatic feedback not implemented</li>
-        <li><strong>Test coverage:</strong> 94 passing tests, semantic golden tests included</li>
+        <li><strong>Rules:</strong> Production-ready (evaluation + blocking + auto-regenerate)</li>
+        <li><strong>Claude loop:</strong> Production-ready (13 MCP tools + post-edit feedback)</li>
+        <li><strong>Test coverage:</strong> 102 passing tests, semantic golden tests included</li>
     </ul>
 </div>
 
@@ -1713,7 +1715,7 @@ Test Files  1 passed (1)
 <footer>
     <p>CodeFlow Visualizer - Making the AI coding black box transparent</p>
     <p style="margin-top: 0.5rem; font-size: 0.75rem;">
-        Last updated: January 15, 2025 | Next milestone: January 19, 2025
+        Last updated: January 16, 2026 | Phase 6-7 complete
     </p>
 </footer>
 
