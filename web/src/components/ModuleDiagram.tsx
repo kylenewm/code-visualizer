@@ -204,7 +204,7 @@ export function ModuleDiagram({ moduleGraph, onModuleClick }: DiagramProps) {
         onClick={() => setIsCollapsed(!isCollapsed)}
         style={{ cursor: 'pointer', userSelect: 'none' }}
       >
-        {isCollapsed ? '▶' : '▼'} Module Dependencies
+        <span className={isCollapsed ? 'icon-chevron-right' : 'icon-chevron-down'} /> Module Dependencies
       </h3>
       {!isCollapsed && (
       <div className="diagram-container">

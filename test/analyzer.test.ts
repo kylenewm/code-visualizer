@@ -369,4 +369,97 @@ def main():
       expect(result.errors.length).toBe(0);
     });
   });
+
+  describe('Content Hash', () => {
+    it('generates contentHash for functions', () => {
+      const source = `
+        function greet(name: string): string {
+          return \`Hello, \${name}!\`;
+        }
+      `;
+
+      const { nodes } = analyzeSourceCode(source, 'test.ts');
+      const greet = nodes.find(n => n.name === 'greet');
+
+      expect(greet).toBeDefined();
+      expect(greet?.contentHash).toBeDefined();
+      expect(greet?.contentHash?.length).toBe(8);
+    });
+
+    it('produces consistent hash for same content', () => {
+      const source = `
+        function test() {
+          return 42;
+        }
+      `;
+
+      const { nodes: nodes1 } = analyzeSourceCode(source, 'test1.ts');
+      const { nodes: nodes2 } = analyzeSourceCode(source, 'test2.ts');
+
+      const hash1 = nodes1.find(n => n.name === 'test')?.contentHash;
+      const hash2 = nodes2.find(n => n.name === 'test')?.contentHash;
+
+      expect(hash1).toBe(hash2);
+    });
+
+    it('produces different hash when body changes', () => {
+      const source1 = `
+        function testBodyChange1() {
+          return 42;
+        }
+      `;
+      const source2 = `
+        function testBodyChange2() {
+          return 43;
+        }
+      `;
+
+      const { nodes: nodes1 } = analyzeSourceCode(source1, 'body1.ts');
+      const { nodes: nodes2 } = analyzeSourceCode(source2, 'body2.ts');
+
+      const func1 = nodes1.find(n => n.name === 'testBodyChange1');
+      const func2 = nodes2.find(n => n.name === 'testBodyChange2');
+
+      expect(func1?.contentHash).toBeDefined();
+      expect(func2?.contentHash).toBeDefined();
+      expect(func1?.contentHash).not.toBe(func2?.contentHash);
+    });
+
+    it('produces different hash when params change', () => {
+      const source1 = `
+        function testParams1(a: number) {
+          return a;
+        }
+      `;
+      const source2 = `
+        function testParams2(a: number, b: number) {
+          return a;
+        }
+      `;
+
+      const { nodes: nodes1 } = analyzeSourceCode(source1, 'params1.ts');
+      const { nodes: nodes2 } = analyzeSourceCode(source2, 'params2.ts');
+
+      const func1 = nodes1.find(n => n.name === 'testParams1');
+      const func2 = nodes2.find(n => n.name === 'testParams2');
+
+      expect(func1?.contentHash).toBeDefined();
+      expect(func2?.contentHash).toBeDefined();
+      expect(func1?.contentHash).not.toBe(func2?.contentHash);
+    });
+
+    it('generates contentHash for Python functions', () => {
+      const source = `
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+      `;
+
+      const { nodes } = analyzeSourceCode(source, 'test.py');
+      const greet = nodes.find(n => n.name === 'greet');
+
+      expect(greet).toBeDefined();
+      expect(greet?.contentHash).toBeDefined();
+      expect(greet?.contentHash?.length).toBe(8);
+    });
+  });
 });

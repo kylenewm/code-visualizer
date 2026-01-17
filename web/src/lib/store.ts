@@ -4,6 +4,17 @@
 
 import { create } from 'zustand';
 
+export interface SemanticAnnotation {
+  /** AI-generated purpose explanation (1-3 sentences) */
+  text: string;
+  /** Hash of function body when annotation was created */
+  contentHash: string;
+  /** Timestamp when annotation was generated (ms since epoch) */
+  generatedAt: number;
+  /** Source of the annotation */
+  source: 'claude' | 'manual';
+}
+
 export interface GraphNode {
   id: string;
   kind: 'function' | 'method' | 'class' | 'module';
@@ -25,6 +36,10 @@ export interface GraphNode {
   category?: string;
   /** Timestamp when this node was last modified */
   lastModified?: number;
+  /** Hash of function body + params for staleness detection */
+  contentHash?: string;
+  /** AI-generated semantic annotation */
+  annotation?: SemanticAnnotation;
 }
 
 export interface RecentChange {
@@ -92,6 +107,36 @@ export interface ChangeEvent {
   linesRemoved: number;
 }
 
+// Drift detection types
+export type DriftType = 'implementation' | 'semantic' | 'unknown';
+export type DriftSeverity = 'low' | 'medium' | 'high';
+
+export interface DriftEvent {
+  id: number;
+  nodeId: string;
+  stableId?: string;
+  oldContentHash: string;
+  newContentHash: string;
+  oldAnnotationId?: number;
+  detectedAt: number;
+  driftType: DriftType;
+  severity: DriftSeverity;
+  resolvedAt?: number;
+  resolution?: string;
+}
+
+export interface AnnotationVersion {
+  id: number;
+  nodeId: string;
+  stableId?: string;
+  contentHash: string;
+  text: string;
+  source: 'claude' | 'manual';
+  createdAt: number;
+  supersededAt?: number;
+  supersededBy?: number;
+}
+
 interface GraphStore {
   // Data
   nodes: GraphNode[];
@@ -99,6 +144,9 @@ interface GraphStore {
   recentChanges: RecentChange[];
   changeEvents: ChangeEvent[];
   moduleGraph: ModuleGraph | null;
+  nodeDrift: Map<string, DriftEvent>;
+  driftHistory: Map<string, DriftEvent[]>;
+  annotationHistory: Map<string, AnnotationVersion[]>;
 
   // UI State
   selectedNodeId: string | null;
@@ -140,6 +188,19 @@ interface GraphStore {
   setChangeEvents: (events: ChangeEvent[]) => void;
   getChangeEvents: (limit?: number) => ChangeEvent[];
 
+  // Drift actions
+  setNodeDrift: (nodeId: string, drift: DriftEvent | null) => void;
+  addDriftEvents: (events: Array<{ nodeId: string; driftId: number; severity?: string; driftType?: string }>) => void;
+  clearDrift: (nodeId: string) => void;
+  getNodeDrift: (nodeId: string) => DriftEvent | null;
+  hasUnresolvedDrift: (nodeId: string) => boolean;
+  setDriftHistory: (nodeId: string, history: DriftEvent[]) => void;
+  getDriftHistory: (nodeId: string) => DriftEvent[];
+
+  // Annotation history actions
+  setAnnotationHistory: (nodeId: string, history: AnnotationVersion[]) => void;
+  getAnnotationHistory: (nodeId: string) => AnnotationVersion[];
+
   // Drill-down actions
   drillDownToWalkthrough: (nodeId: string) => void;
   requestView: (view: 'architecture' | 'recent' | 'walkthrough' | 'graph') => void;
@@ -162,6 +223,10 @@ interface GraphStore {
   getEntryPoints: () => GraphNode[];
   /** Get all callers transitively - impact analysis */
   getImpact: (nodeId: string, maxDepth?: number) => { callers: GraphNode[]; depth: Map<string, number> };
+  /** Check if a node's annotation is stale (content changed since annotation) */
+  isAnnotationStale: (nodeId: string) => boolean;
+  /** Get nodes that need annotation (unannotated or stale) */
+  getPendingAnnotations: () => GraphNode[];
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -171,6 +236,9 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   recentChanges: [],
   changeEvents: [],
   moduleGraph: null,
+  nodeDrift: new Map<string, DriftEvent>(),
+  driftHistory: new Map<string, DriftEvent[]>(),
+  annotationHistory: new Map<string, AnnotationVersion[]>(),
   selectedNodeId: null,
   selectedModuleId: null,
   expandedModules: new Set<string>(),
@@ -279,6 +347,74 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   getChangeEvents: (limit) => {
     const { changeEvents } = get();
     return limit ? changeEvents.slice(0, limit) : changeEvents;
+  },
+
+  // Drift actions
+  setNodeDrift: (nodeId, drift) => {
+    const { nodeDrift } = get();
+    const newDrift = new Map(nodeDrift);
+    if (drift) {
+      newDrift.set(nodeId, drift);
+    } else {
+      newDrift.delete(nodeId);
+    }
+    set({ nodeDrift: newDrift });
+  },
+
+  addDriftEvents: (events) => {
+    const { nodeDrift } = get();
+    const newDrift = new Map(nodeDrift);
+    for (const event of events) {
+      newDrift.set(event.nodeId, {
+        id: event.driftId,
+        nodeId: event.nodeId,
+        oldContentHash: '',
+        newContentHash: '',
+        detectedAt: Date.now(),
+        driftType: (event.driftType as DriftType) || 'unknown',
+        severity: (event.severity as DriftSeverity) || 'low',
+      });
+    }
+    set({ nodeDrift: newDrift });
+  },
+
+  clearDrift: (nodeId) => {
+    const { nodeDrift } = get();
+    const newDrift = new Map(nodeDrift);
+    newDrift.delete(nodeId);
+    set({ nodeDrift: newDrift });
+  },
+
+  getNodeDrift: (nodeId) => {
+    return get().nodeDrift.get(nodeId) ?? null;
+  },
+
+  hasUnresolvedDrift: (nodeId) => {
+    const drift = get().nodeDrift.get(nodeId);
+    return drift !== undefined && !drift.resolvedAt;
+  },
+
+  setDriftHistory: (nodeId, history) => {
+    const { driftHistory } = get();
+    const newHistory = new Map(driftHistory);
+    newHistory.set(nodeId, history);
+    set({ driftHistory: newHistory });
+  },
+
+  getDriftHistory: (nodeId) => {
+    return get().driftHistory.get(nodeId) ?? [];
+  },
+
+  // Annotation history actions
+  setAnnotationHistory: (nodeId, history) => {
+    const { annotationHistory } = get();
+    const newHistory = new Map(annotationHistory);
+    newHistory.set(nodeId, history);
+    set({ annotationHistory: newHistory });
+  },
+
+  getAnnotationHistory: (nodeId) => {
+    return get().annotationHistory.get(nodeId) ?? [];
   },
 
   // Drill-down actions
@@ -497,5 +633,25 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       .sort((a, b) => (depthMap.get(a.id) || 0) - (depthMap.get(b.id) || 0));
 
     return { callers, depth: depthMap };
+  },
+
+  isAnnotationStale: (nodeId) => {
+    const node = get().nodes.find(n => n.id === nodeId);
+    if (!node?.annotation) return false;
+    // Stale if content hash changed since annotation was created
+    return node.contentHash !== node.annotation.contentHash;
+  },
+
+  getPendingAnnotations: () => {
+    const { nodes } = get();
+    return nodes.filter(n => {
+      // Only functions and methods can have annotations
+      if (n.kind !== 'function' && n.kind !== 'method') return false;
+      // No annotation yet
+      if (!n.annotation) return true;
+      // Stale annotation (content changed since annotation)
+      if (n.contentHash && n.annotation.contentHash !== n.contentHash) return true;
+      return false;
+    });
   },
 }));

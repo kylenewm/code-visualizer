@@ -42,7 +42,6 @@ export function RecentChanges() {
     return (
       <div className="recent-changes">
         <div className="recent-changes-empty">
-          <div className="empty-icon">📝</div>
           <h3>No recent changes</h3>
           <p>Modified files will appear here as you work</p>
         </div>

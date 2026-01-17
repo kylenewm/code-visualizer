@@ -44,7 +44,7 @@ function ModuleCard({
       data-module-id={module.id}
     >
       <div className="module-header" onClick={onToggle}>
-        <div className="module-expand">{isExpanded ? '▼' : '▶'}</div>
+        <span className={`module-expand ${isExpanded ? 'icon-chevron-down' : 'icon-chevron-right'}`} />
         <div className="module-info">
           <span className="module-name">{module.name}</span>
           <span className="module-stats">
@@ -84,7 +84,7 @@ function FileRow({
   return (
     <div className={`architecture-file ${recentlyChanged ? 'changed' : ''}`}>
       <div className="file-header" onClick={onToggle}>
-        <div className="file-expand">{isExpanded ? '▼' : '▶'}</div>
+        <span className={`file-expand ${isExpanded ? 'icon-chevron-down' : 'icon-chevron-right'}`} />
         <span className="file-name">{fileName}</span>
         <span className="file-stats">{functions.length} fn{functions.length !== 1 ? 's' : ''}</span>
         {recentlyChanged && <span className="file-changed-badge">CHANGED</span>}
@@ -205,7 +205,6 @@ export function ArchitectureView() {
     return (
       <div className="architecture-view">
         <div className="architecture-empty">
-          <div className="empty-icon">📦</div>
           <h3>Connecting...</h3>
           <p>Waiting for connection to analysis server</p>
         </div>
@@ -217,7 +216,6 @@ export function ArchitectureView() {
     return (
       <div className="architecture-view">
         <div className="architecture-empty">
-          <div className="empty-icon">⚠️</div>
           <h3>Failed to load architecture</h3>
           <p>{error}</p>
           <button
@@ -244,7 +242,6 @@ export function ArchitectureView() {
     return (
       <div className="architecture-view">
         <div className="architecture-empty">
-          <div className="empty-icon">⏳</div>
           <h3>Loading...</h3>
           <p>Fetching module architecture</p>
         </div>
@@ -256,7 +253,6 @@ export function ArchitectureView() {
     return (
       <div className="architecture-view">
         <div className="architecture-empty">
-          <div className="empty-icon">📦</div>
           <h3>No modules found</h3>
           <p>Analyze a project to see its architecture</p>
         </div>

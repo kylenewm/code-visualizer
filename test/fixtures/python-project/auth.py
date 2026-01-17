@@ -15,8 +15,8 @@ class User:
         self.password_hash = password_hash
 
 
-def login(email: str, password: str) -> Optional[User]:
-    """Authenticate a user"""
+def login(email: str, password: str, remember: bool = False) -> Optional[User]:
+    """Authenticate a user with optional remember-me"""
     user = find_user_by_email(email)
     if not user:
         return None
@@ -25,6 +25,7 @@ def login(email: str, password: str) -> Optional[User]:
     if not is_valid:
         return None
 
+    # Set session if remember=True
     return user
 
 

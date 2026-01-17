@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "codeflow": {
+      "command": "npm",
+      "args": ["run", "mcp"],
+      "cwd": "/Users/kylenewman/Downloads/codeflow-viz",
+      "env": {
+        "CODEFLOW_API": "http://localhost:3001"
+      }
+    }
+  }
+}

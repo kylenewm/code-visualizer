@@ -28,23 +28,19 @@ export function WelcomeModal({ onClose, onStartTour }: WelcomeModalProps) {
           </p>
           <div className="feature-grid">
             <div className="feature-item">
-              <span className="feature-icon">🏗️</span>
-              <span className="feature-label">Architecture</span>
+                            <span className="feature-label">Architecture</span>
               <span className="feature-desc">Module-level overview</span>
             </div>
             <div className="feature-item">
-              <span className="feature-icon">⚡</span>
-              <span className="feature-label">Changes</span>
+                            <span className="feature-label">Changes</span>
               <span className="feature-desc">Track modifications</span>
             </div>
             <div className="feature-item">
-              <span className="feature-icon">🔍</span>
-              <span className="feature-label">Walkthrough</span>
+                            <span className="feature-label">Walkthrough</span>
               <span className="feature-desc">Explore call trees</span>
             </div>
             <div className="feature-item">
-              <span className="feature-icon">🕸️</span>
-              <span className="feature-label">Graph</span>
+                            <span className="feature-label">Graph</span>
               <span className="feature-desc">Interactive flow map</span>
             </div>
           </div>
@@ -100,13 +96,11 @@ export function WelcomeModal({ onClose, onStartTour }: WelcomeModalProps) {
       subtitle: 'Start exploring your codebase',
       content: (
         <div className="welcome-ready">
-          <div className="ready-icon">🚀</div>
           <p>
             Click on any function to see its call chain, callers, and source preview.
             Changes are tracked in real-time as you edit files.
           </p>
           <div className="tip-box">
-            <span className="tip-icon">💡</span>
             <span>Press <kbd>?</kbd> anytime to see this guide again</span>
           </div>
         </div>
@@ -137,7 +131,7 @@ export function WelcomeModal({ onClose, onStartTour }: WelcomeModalProps) {
     <div className="welcome-overlay" onClick={handleSkip}>
       <div className="welcome-modal" onClick={(e) => e.stopPropagation()}>
         <button className="welcome-close" onClick={handleSkip} title="Skip intro">
-          ✕
+          ×
         </button>
 
         <div className="welcome-header">

@@ -65,6 +65,15 @@ export class CodeGraph {
     return this.nodes.get(nodeId);
   }
 
+  getNodeByStableId(stableId: string): GraphNode | undefined {
+    for (const node of this.nodes.values()) {
+      if (node.stableId === stableId) {
+        return node;
+      }
+    }
+    return undefined;
+  }
+
   removeNode(nodeId: string): void {
     const node = this.nodes.get(nodeId);
     if (!node) return;
@@ -297,6 +306,59 @@ export class CodeGraph {
       root: nodeId,
       chain,
       depth: maxDepth,
+    };
+  }
+
+  // ----------------------------------------
+  // Query: Transitive Callers (all functions that depend on this)
+  // ----------------------------------------
+
+  getTransitiveCallers(nodeId: string, maxDepth: number = 3): {
+    callers: GraphNode[];
+    byDepth: Map<number, GraphNode[]>;
+    total: number;
+    exportedCount: number;
+  } {
+    const callers: GraphNode[] = [];
+    const byDepth = new Map<number, GraphNode[]>();
+    const visited = new Set<string>();
+    let exportedCount = 0;
+
+    const traverse = (currentId: string, depth: number): void => {
+      if (depth > maxDepth) return;
+
+      const edgeIds = this.incomingEdges.get(currentId) ?? new Set();
+
+      for (const edgeId of edgeIds) {
+        const edge = this.edges.get(edgeId);
+        if (!edge || edge.type !== 'calls') continue;
+
+        if (visited.has(edge.source)) continue;
+        visited.add(edge.source);
+
+        const caller = this.nodes.get(edge.source);
+        if (caller) {
+          callers.push(caller);
+          if (caller.exported) exportedCount++;
+
+          // Group by depth
+          const depthCallers = byDepth.get(depth) ?? [];
+          depthCallers.push(caller);
+          byDepth.set(depth, depthCallers);
+
+          // Recurse to find indirect callers
+          traverse(edge.source, depth + 1);
+        }
+      }
+    };
+
+    traverse(nodeId, 1);
+
+    return {
+      callers,
+      byDepth,
+      total: callers.length,
+      exportedCount,
     };
   }
 

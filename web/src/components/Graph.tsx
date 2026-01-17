@@ -9,16 +9,38 @@ import { useGraphStore } from '../lib/store';
 import { layoutGraph, type LayoutNode, type LayoutEdge } from '../lib/dagre-layout';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 
+// Enterprise design colors - matching tokens.css
 const COLORS: Record<string, string> = {
-  function: '#3b82f6',
-  method: '#8b5cf6',
-  class: '#10b981',
-  module: '#6b7280',
-  selected: '#f59e0b',
-  edge: '#475569',
-  callEdge: '#3b82f6',
-  importEdge: '#10b981',
-  highlightEdge: '#f59e0b',
+  // Node types (matches accent colors from tokens.css)
+  function: '#3b82f6',      // --accent-blue
+  method: '#8b5cf6',        // --accent-purple
+  class: '#14b8a6',         // --accent-teal
+  module: '#52525b',        // --text-muted
+
+  // Selection and highlighting
+  selected: '#f59e0b',      // --accent-amber
+  selectedFill: '#78350f',  // Darker amber for selected node fill
+  selectedStroke: '#fbbf24', // --accent-amber-hover
+
+  // Edge colors
+  edge: '#3f3f46',          // Softer edge color
+  callEdge: '#3b82f6',      // --accent-blue
+  importEdge: '#14b8a6',    // --accent-teal
+  highlightEdge: '#f59e0b', // --accent-amber
+  incomingEdge: '#22c55e',  // --accent-green (callers)
+  outgoingEdge: '#f59e0b',  // --accent-amber (callees)
+
+  // Node fill colors (darker for better contrast)
+  functionFill: '#1e3a5f',
+  methodFill: '#3b2a5f',
+  classFill: '#1a3f3a',
+
+  // Filter colors
+  shadowColor: 'rgba(0, 0, 0, 0.4)',
+  glowColor: 'rgba(245, 158, 11, 0.5)',
+
+  // Text
+  textPrimary: '#fafafa',   // --text-primary
 };
 
 // Expose methods to parent via ref
@@ -371,7 +393,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       })
       .attr('stroke', (d: LayoutEdge) => {
         if (connectedEdgeIds.has(d.id)) {
-          return incomingEdgeIds.has(d.id) ? '#22c55e' : '#f59e0b'; // Green for incoming, orange for outgoing
+          return incomingEdgeIds.has(d.id) ? COLORS.incomingEdge : COLORS.outgoingEdge;
         }
         if (d.type === 'imports') return COLORS.importEdge;
         return COLORS.edge;
@@ -437,38 +459,76 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
         });
       });
 
-    // Node background
+    // Drop shadow filter for nodes
+    const shadowFilter = defs.append('filter')
+      .attr('id', 'node-shadow')
+      .attr('x', '-20%')
+      .attr('y', '-20%')
+      .attr('width', '140%')
+      .attr('height', '140%');
+
+    shadowFilter.append('feDropShadow')
+      .attr('dx', 0)
+      .attr('dy', 2)
+      .attr('stdDeviation', 4)
+      .attr('flood-color', COLORS.shadowColor);
+
+    // Glow filter for selected nodes
+    const glowFilter = defs.append('filter')
+      .attr('id', 'node-glow')
+      .attr('x', '-50%')
+      .attr('y', '-50%')
+      .attr('width', '200%')
+      .attr('height', '200%');
+
+    glowFilter.append('feDropShadow')
+      .attr('dx', 0)
+      .attr('dy', 0)
+      .attr('stdDeviation', 8)
+      .attr('flood-color', COLORS.glowColor);
+
+    // Node background with improved styling
     nodeElements.append('rect')
       .attr('width', (d: LayoutNode) => d.width)
       .attr('height', (d: LayoutNode) => d.height)
-      .attr('rx', 6)
-      .attr('ry', 6)
-      .attr('fill', (d: LayoutNode) =>
-        d.id === selectedNodeId ? COLORS.selected : COLORS[d.kind] ?? COLORS.function
-      )
+      .attr('rx', 8)
+      .attr('ry', 8)
+      .attr('fill', (d: LayoutNode) => {
+        if (d.id === selectedNodeId) return COLORS.selectedFill;
+        // Use kind-based fill colors for better visual hierarchy
+        if (d.kind === 'function') return COLORS.functionFill;
+        if (d.kind === 'method') return COLORS.methodFill;
+        if (d.kind === 'class') return COLORS.classFill;
+        return COLORS.functionFill;
+      })
       .attr('stroke', (d: LayoutNode) => {
-        if (d.id === selectedNodeId) return '#fbbf24';
-        if (connectedNodeIds.has(d.id) && d.id !== selectedNodeId) return '#f59e0b';
-        // Use file-based color for unselected nodes
-        const fileName = d.filePath.split('/').pop() || 'unknown';
-        return fileColorMap.get(fileName) || '#475569';
+        if (d.id === selectedNodeId) return COLORS.selectedStroke;
+        if (connectedNodeIds.has(d.id) && d.id !== selectedNodeId) return COLORS.selected;
+        // Use kind-based accent colors
+        return COLORS[d.kind] ?? COLORS.function;
       })
       .attr('stroke-width', (d: LayoutNode) => {
-        if (d.id === selectedNodeId) return 3;
+        if (d.id === selectedNodeId) return 2.5;
         if (connectedNodeIds.has(d.id)) return 2;
-        return 2; // Thicker default stroke to show file color
-      });
+        return 1.5;
+      })
+      .attr('filter', (d: LayoutNode) =>
+        d.id === selectedNodeId ? 'url(#node-glow)' : 'url(#node-shadow)'
+      );
 
-    // Node label (hidden at low zoom)
+    // Node label (hidden at low zoom) with improved typography
     nodeElements.append('text')
       .attr('class', 'node-label')
       .attr('x', (d: LayoutNode) => d.width / 2)
       .attr('y', (d: LayoutNode) => d.height / 2)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'middle')
-      .attr('fill', 'white')
+      .attr('fill', COLORS.textPrimary)
       .attr('font-size', '11px')
       .attr('font-weight', 500)
+      .attr('font-family', "'Inter', -apple-system, BlinkMacSystemFont, sans-serif")
+      .attr('letter-spacing', '-0.01em')
+      .style('text-shadow', '0 1px 2px rgba(0, 0, 0, 0.5)')
       .text((d: LayoutNode) => {
         // Calculate max chars based on node width (matches dagre-layout calculation)
         const CHAR_WIDTH = 7; // Slightly less than layout's 8px for visual safety
@@ -537,7 +597,6 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       {showEmptyState && (
         <div className="graph-empty">
           <div className="empty-content">
-            <div className="empty-icon">📂</div>
             <h3>No code analyzed yet</h3>
             <p>Start the analyzer on a directory to see the call graph</p>
             <code>npm start -- serve ./your-project</code>
@@ -549,8 +608,8 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       <div className="zoom-controls">
         <button onClick={zoomIn} title="Zoom In">+</button>
         <button onClick={zoomOut} title="Zoom Out">−</button>
-        <button onClick={fitToScreen} title="Fit to Screen">⊡</button>
-        <button onClick={resetZoom} title="Reset Zoom">↺</button>
+        <button onClick={fitToScreen} title="Fit to Screen">Fit</button>
+        <button onClick={resetZoom} title="Reset Zoom">Reset</button>
         <span className="zoom-level">{Math.round(currentZoom * 100)}%</span>
       </div>
 
@@ -562,7 +621,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
           disabled={changedNodeCount === 0}
           title={showChangedOnly ? 'Show all nodes' : 'Show only changed code + callers/callees'}
         >
-          {showChangedOnly ? '🔄 Show All' : `⚡ Changed (${changedNodeCount})`}
+          {showChangedOnly ? 'Show All' : `Changed (${changedNodeCount})`}
         </button>
       </div>
 
@@ -574,7 +633,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
           disabled={!selectedNodeId && !focusMode}
           title={focusMode ? 'Show all nodes' : 'Focus on selected node'}
         >
-          {focusMode ? '👁 Show All' : '◎ Focus'}
+          {focusMode ? 'Show All' : 'Focus'}
         </button>
         {focusMode && (
           <select
@@ -596,7 +655,7 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
           onClick={() => setLegendExpanded(!legendExpanded)}
           title={legendExpanded ? 'Hide legend' : 'Show legend'}
         >
-          {legendExpanded ? '▼ Legend' : '▲ Legend'}
+          <span className={legendExpanded ? 'icon-chevron-down' : 'icon-chevron-up'} /> Legend
         </button>
         {legendExpanded && (
           <div className="legend-content">
@@ -618,11 +677,11 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
             <div className="legend-section">
               <div className="legend-section-title">Edges</div>
               <div className="legend-item">
-                <span className="legend-color" style={{ background: '#22c55e' }} />
+                <span className="legend-color" style={{ background: COLORS.incomingEdge }} />
                 <span>Callers (incoming)</span>
               </div>
               <div className="legend-item">
-                <span className="legend-color" style={{ background: '#f59e0b' }} />
+                <span className="legend-color" style={{ background: COLORS.outgoingEdge }} />
                 <span>Calls (outgoing)</span>
               </div>
             </div>
@@ -650,7 +709,6 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
     return [
       {
         label: 'Focus on this node',
-        icon: '◎',
         action: () => {
           navigateToNode(nodeId);
           setFocusMode(true);
@@ -658,39 +716,32 @@ export const Graph = forwardRef<GraphHandle>(function Graph(_props, ref) {
       },
       {
         label: 'Find callers',
-        icon: '↙',
         action: () => {
           navigateToNode(nodeId);
-          // Callers are shown in the sidebar
         },
       },
       {
         label: 'Find callees',
-        icon: '↗',
         action: () => {
           navigateToNode(nodeId);
-          // Callees are shown in the sidebar
         },
       },
       { label: '', action: () => {}, divider: true },
       {
-        label: 'Copy node name',
-        icon: '📋',
+        label: 'Copy name',
         action: () => {
           navigator.clipboard.writeText(node.name);
         },
       },
       {
-        label: 'Copy file path',
-        icon: '📁',
+        label: 'Copy path',
         action: () => {
           navigator.clipboard.writeText(`${node.filePath}:${node.location.startLine}`);
         },
       },
       { label: '', action: () => {}, divider: true },
       {
-        label: focusMode ? 'Exit focus mode' : 'Enter focus mode',
-        icon: focusMode ? '⊙' : '◉',
+        label: focusMode ? 'Exit focus' : 'Enter focus',
         action: () => {
           if (!focusMode) {
             navigateToNode(nodeId);

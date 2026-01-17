@@ -72,8 +72,26 @@ function generateNodeId(filePath: string, kind: NodeKind, name: string, signatur
   return `${fileHash}:${kind}:${name}:${sigHash}`;
 }
 
+function generateStableId(filePath: string, kind: NodeKind, name: string): string {
+  const fileHash = hashString(filePath);
+  return `${fileHash}:${kind}:${name}`;
+}
+
 function generateEdgeId(source: string, target: string, type: string): string {
   return `${source}->${target}:${type}`;
+}
+
+/**
+ * Calculate content hash for a function node
+ * Used for annotation staleness detection
+ * Includes body + params so signature changes also invalidate annotations
+ */
+export function calculateContentHash(node: SyntaxNode): string {
+  const body = node.childForFieldName('body');
+  const bodyText = body?.text ?? '';
+  const params = node.childForFieldName('parameters');
+  const paramsText = params?.text ?? '';
+  return hashString(paramsText + bodyText);
 }
 
 // ============================================
@@ -189,8 +207,10 @@ function extractFromTypeScriptAST(root: SyntaxNode, filePath: string): Extractio
   // Module node
   const moduleName = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? filePath;
   const moduleId = generateNodeId(filePath, 'module', moduleName, '');
+  const moduleStableId = generateStableId(filePath, 'module', moduleName);
   nodes.push({
     id: moduleId,
+    stableId: moduleStableId,
     kind: 'module',
     name: moduleName,
     filePath,
@@ -308,15 +328,18 @@ function extractFunctionInfo(node: SyntaxNode, filePath: string): { node: GraphN
   const kind: NodeKind = node.type === 'method_definition' ? 'method' : 'function';
 
   const nodeId = generateNodeId(filePath, kind, name, signature);
+  const stableId = generateStableId(filePath, kind, name);
 
   // Extract source preview and description
   const sourcePreview = extractSourcePreview(node);
   const description = extractJSDocDescription(node);
   const category = inferCategory(filePath);
+  const contentHash = calculateContentHash(node);
 
   return {
     node: {
       id: nodeId,
+      stableId,
       kind,
       name,
       filePath,
@@ -333,6 +356,7 @@ function extractFunctionInfo(node: SyntaxNode, filePath: string): { node: GraphN
       sourcePreview,
       description,
       category,
+      contentHash,
     },
   };
 }
@@ -408,6 +432,7 @@ function extractClassInfo(node: SyntaxNode, filePath: string): { node: GraphNode
   const name = nameNode.text;
   const exported = isExported(node);
   const nodeId = generateNodeId(filePath, 'class', name, '');
+  const stableId = generateStableId(filePath, 'class', name);
 
   // Extract description from JSDoc
   const description = extractJSDocDescription(node);
@@ -416,6 +441,7 @@ function extractClassInfo(node: SyntaxNode, filePath: string): { node: GraphNode
   return {
     node: {
       id: nodeId,
+      stableId,
       kind: 'class',
       name,
       filePath,

@@ -44,7 +44,7 @@ export function Breadcrumbs() {
           onClick={navigateBack}
           title="Go Back"
         >
-          ←
+          ‹
         </button>
       )}
 
@@ -62,7 +62,7 @@ export function Breadcrumbs() {
             >
               {item.name}
             </span>
-            {!isLast && <span className="breadcrumb-separator">→</span>}
+            {!isLast && <span className="breadcrumb-separator">/</span>}
           </span>
         );
       })}
@@ -73,7 +73,7 @@ export function Breadcrumbs() {
           onClick={clearHistory}
           title="Clear History"
         >
-          ✕
+          ×
         </button>
       )}
     </div>

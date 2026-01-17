@@ -98,6 +98,10 @@ export class ChangeDetector extends EventEmitter {
     this.aggregator.on('change:recorded', (event: ChangeEvent) => {
       this.emit('change:recorded', event);
     });
+
+    this.aggregator.on('auto:annotated', (results) => {
+      this.emit('auto:annotated', results);
+    });
   }
 
   /**
@@ -207,6 +211,20 @@ export class ChangeDetector extends EventEmitter {
    */
   getChangeEvent(id: string): ChangeEvent | undefined {
     return this.aggregator.getChangeEvent(id);
+  }
+
+  /**
+   * Enable or disable auto-annotate
+   */
+  setAutoAnnotate(enabled: boolean): void {
+    this.aggregator.setAutoAnnotate(enabled);
+  }
+
+  /**
+   * Check if auto-annotate is enabled
+   */
+  isAutoAnnotateEnabled(): boolean {
+    return this.aggregator.isAutoAnnotateEnabled();
   }
 }
 
