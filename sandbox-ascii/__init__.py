@@ -1,1 +1,0 @@
-"""ASCII Art Animation Package."""

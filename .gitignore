@@ -40,9 +40,14 @@ coverage/
 
 # Internal docs (local only)
 PLAN.md
+DESIGN_POLISH_PLAN.md
+RECOVERED-PLAN-semantic-observability.md
 LOG.md
 STATE.md
 .claude/
+
+# Test sandboxes (local only)
+sandbox-ascii/
 
 # Test artifacts
 test-results/
