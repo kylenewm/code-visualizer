@@ -4,9 +4,9 @@
  */
 
 import { readdir, stat } from 'fs/promises';
-import { join } from 'path';
+import { join, basename, dirname } from 'path';
 import { parseFile, parseSource, inferLanguage } from './tree-sitter.js';
-import { extractFromAST, resolveLocalCalls, type ExtractionResult } from './extractor.js';
+import { extractFromAST, resolveLocalCalls, type ExtractionResult, type UnresolvedCall } from './extractor.js';
 import { CodeGraph } from '../graph/graph.js';
 import type { AnalysisResult, GraphNode, GraphEdge } from '../types/index.js';
 
@@ -40,6 +40,11 @@ export class AnalysisPipeline {
   private graph: CodeGraph;
   private config: Required<PipelineConfig>;
 
+  // Cross-file resolution data
+  private moduleToFile = new Map<string, string>();  // moduleName -> filePath
+  private fileToFunctionIndex = new Map<string, Map<string, string>>();  // filePath -> (funcName -> nodeId)
+  private pendingCrossFileCalls: Array<UnresolvedCall & { sourceFile: string }> = [];
+
   constructor(config: PipelineConfig = {}) {
     this.graph = new CodeGraph();
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -61,8 +66,29 @@ export class AnalysisPipeline {
 
     const startExtract = performance.now();
     const extraction = extractFromAST(parseResult.tree.rootNode, filePath);
-    const { resolved } = resolveLocalCalls(extraction);
+    const { resolved, stillUnresolved } = resolveLocalCalls(extraction);
     const extractTimeMs = performance.now() - startExtract;
+
+    // Store cross-file resolution data
+    const moduleName = basename(filePath).replace(/\.[^.]+$/, '');
+    this.moduleToFile.set(moduleName, filePath);
+
+    // Store function index for this file (only non-import entries)
+    const localFunctions = new Map<string, string>();
+    for (const [name, id] of extraction.functionIndex) {
+      if (!id.startsWith('import:')) {
+        localFunctions.set(name, id);
+      }
+    }
+    this.fileToFunctionIndex.set(filePath, localFunctions);
+
+    // Collect unresolved calls that reference imports (for cross-file resolution)
+    for (const call of stillUnresolved) {
+      const targetRef = extraction.functionIndex.get(call.calleeName);
+      if (targetRef?.startsWith('import:')) {
+        this.pendingCrossFileCalls.push({ ...call, sourceFile: filePath });
+      }
+    }
 
     // Add to graph (without lastModified - only change-aggregator sets that on re-analysis)
     for (const node of extraction.nodes) {
@@ -116,6 +142,11 @@ export class AnalysisPipeline {
     const startMs = performance.now();
     const files = await this.findFiles(dirPath);
 
+    // Reset cross-file resolution state
+    this.moduleToFile.clear();
+    this.fileToFunctionIndex.clear();
+    this.pendingCrossFileCalls = [];
+
     const allNodes: GraphNode[] = [];
     const allEdges: GraphEdge[] = [];
     const errors: AnalysisResult['errors'] = [];
@@ -135,6 +166,13 @@ export class AnalysisPipeline {
       }
     }
 
+    // Resolve cross-file calls after all files are analyzed
+    const crossFileEdges = this.resolveCrossFileCalls(dirPath);
+    allEdges.push(...crossFileEdges);
+    for (const edge of crossFileEdges) {
+      this.graph.addEdge(edge);
+    }
+
     const endMs = performance.now();
 
     return {
@@ -149,6 +187,51 @@ export class AnalysisPipeline {
       },
       errors,
     };
+  }
+
+  // ----------------------------------------
+  // Cross-File Call Resolution
+  // ----------------------------------------
+
+  private resolveCrossFileCalls(projectRoot: string): GraphEdge[] {
+    const resolvedEdges: GraphEdge[] = [];
+
+    for (const call of this.pendingCrossFileCalls) {
+      // The call.calleeName is the function being called (e.g., "draw_box")
+      // We need to find which module it was imported from
+
+      // Get the function index for the source file to find the import reference
+      const sourceDir = dirname(call.sourceFile);
+
+      // Try to resolve the module - check common patterns
+      // For Python: "from shapes import draw_box" means look for shapes.py in same dir
+      for (const [moduleName, targetFile] of this.moduleToFile) {
+        // Check if target file is in the same directory or a subdirectory
+        const targetDir = dirname(targetFile);
+
+        // Simple heuristic: same directory or relative path match
+        if (targetDir === sourceDir || targetFile.startsWith(sourceDir)) {
+          const targetFunctions = this.fileToFunctionIndex.get(targetFile);
+          if (targetFunctions?.has(call.calleeName)) {
+            const targetNodeId = targetFunctions.get(call.calleeName)!;
+
+            // Create edge
+            const edgeId = `${call.callerNodeId}->${targetNodeId}:calls:xfile`;
+            resolvedEdges.push({
+              id: edgeId,
+              source: call.callerNodeId,
+              target: targetNodeId,
+              type: 'calls',
+              confidence: 'heuristic',  // Cross-file resolution is heuristic
+              callSite: call.callSite,
+            });
+            break;  // Found a match, stop looking
+          }
+        }
+      }
+    }
+
+    return resolvedEdges;
   }
 
   // ----------------------------------------

@@ -14,6 +14,7 @@ import { getDriftDetector } from '../analyzer/drift-detector.js';
 import type { NodeChange } from '../analyzer/drift-detector.js';
 import { getAnnotationStore } from '../storage/annotation-store.js';
 import { getTouchedStore } from '../storage/touched-store.js';
+import { getAnnotationGenerator } from '../analyzer/annotation-generator.js';
 
 // ============================================
 // Types
@@ -30,6 +31,8 @@ export interface ChangeAggregatorConfig {
   captureGitDiffs: boolean;
   /** Maximum number of change events to keep */
   maxChangeHistory: number;
+  /** Auto-generate annotations for new/changed functions */
+  autoAnnotate: boolean;
 }
 
 /** Rich change event with diff information */
@@ -90,6 +93,7 @@ export class ChangeAggregator extends EventEmitter {
       maxBatchSize: 50,
       captureGitDiffs: true,
       maxChangeHistory: 100,
+      autoAnnotate: false,        // Off by default - user must enable
       ...config,
     };
     this.pipeline = new AnalysisPipeline();
@@ -435,10 +439,91 @@ export class ChangeAggregator extends EventEmitter {
       }
     }
 
+    // Auto-annotate new/changed functions if enabled
+    if (this.config.autoAnnotate && this.graph) {
+      const autoAnnotated = this.autoAnnotateChangedFunctions(result.analyzedFiles);
+      if (autoAnnotated.length > 0) {
+        this.emit('auto:annotated', autoAnnotated);
+      }
+    }
+
     result.durationMs = Date.now() - startTime;
     this.analysisInProgress = false;
 
     this.emit('analysis:complete', result);
+  }
+
+  /**
+   * Auto-annotate functions that don't have annotations or have stale ones
+   */
+  private autoAnnotateChangedFunctions(analyzedFiles: string[]): Array<{ nodeId: string; name: string; annotation: string }> {
+    if (!this.graph) return [];
+
+    const annotationStore = getAnnotationStore();
+    const generator = getAnnotationGenerator();
+    const results: Array<{ nodeId: string; name: string; annotation: string }> = [];
+
+    for (const filePath of analyzedFiles) {
+      const fileNodes = this.graph.getFileNodes(filePath);
+
+      for (const node of fileNodes) {
+        // Only annotate functions and methods
+        if (node.kind !== 'function' && node.kind !== 'method') continue;
+
+        // Check if annotation exists and is fresh
+        const existingAnnotation = annotationStore.getCurrent(node.stableId);
+        if (existingAnnotation && existingAnnotation.contentHash === node.contentHash) {
+          // Annotation exists and is current - skip
+          continue;
+        }
+
+        // Generate annotation
+        const generated = generator.generateForNode(node);
+
+        // Save to store (use 'claude' source for DB compatibility)
+        try {
+          annotationStore.saveAnnotation(
+            node.id,
+            node.stableId,
+            generated.text,
+            node.contentHash || '',
+            'claude'  // Auto-generated uses 'claude' for DB compatibility
+          );
+
+          // Update node in graph
+          node.annotation = {
+            text: generated.text,
+            contentHash: node.contentHash || '',
+            generatedAt: Date.now(),
+            source: 'claude',
+          };
+
+          results.push({
+            nodeId: node.id,
+            name: node.name,
+            annotation: generated.text,
+          });
+        } catch {
+          // Ignore save errors - database may not be initialized
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Enable or disable auto-annotate at runtime
+   */
+  setAutoAnnotate(enabled: boolean): void {
+    this.config.autoAnnotate = enabled;
+  }
+
+  /**
+   * Check if auto-annotate is enabled
+   */
+  isAutoAnnotateEnabled(): boolean {
+    return this.config.autoAnnotate;
   }
 
   /**

@@ -298,6 +298,33 @@ export class ApiServer {
     });
 
     // ----------------------------------------
+    // Auto-Annotate Toggle
+    // ----------------------------------------
+
+    // Get auto-annotate status
+    this.app.get('/api/auto-annotate', (_req: Request, res: Response) => {
+      if (!this.detector) {
+        return res.status(503).json({ error: 'Change detector not initialized' });
+      }
+      res.json({ enabled: this.detector.isAutoAnnotateEnabled() });
+    });
+
+    // Toggle auto-annotate
+    this.app.post('/api/auto-annotate', (req: Request, res: Response) => {
+      if (!this.detector) {
+        return res.status(503).json({ error: 'Change detector not initialized' });
+      }
+
+      const { enabled } = req.body;
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+      }
+
+      this.detector.setAutoAnnotate(enabled);
+      res.json({ enabled: this.detector.isAutoAnnotateEnabled() });
+    });
+
+    // ----------------------------------------
     // Annotation Endpoints (with persistence)
     // ----------------------------------------
 

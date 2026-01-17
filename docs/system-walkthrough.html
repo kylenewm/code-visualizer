@@ -446,6 +446,15 @@
             </div>
         </div>
 
+        <div class="info-box" style="border-left-color: #3fb950;">
+            <strong>Cross-File Call Resolution</strong>
+            <p style="color: #8b949e; margin-top: 0.5rem;">
+                When <code>effects.py</code> imports <code>draw_box</code> from <code>shapes.py</code> and calls it,
+                CodeFlow creates an edge connecting the call to the actual function definition - even across files.
+                This enables true cross-module dependency tracking.
+            </p>
+        </div>
+
         <div class="terminal">
 <pre><span class="dim"># Graph state after analysis</span>
 <span class="prompt">$</span> <span class="cmd">curl localhost:3001/api/stats</span>
@@ -546,6 +555,27 @@ and sends receipt email."
   <span class="cmd">supersededAt</span>: null             <span class="dim">// null = current version</span>
 }</pre>
             </div>
+        </div>
+
+        <div class="info-box" style="border-left-color: #d29922;">
+            <strong>Auto-Annotate Toggle</strong>
+            <p style="color: #8b949e; margin-top: 0.5rem;">
+                Enable automatic annotation generation for new/changed functions.
+                Uses template-based generation (fast, no LLM calls).
+            </p>
+        </div>
+
+        <div class="terminal">
+<pre><span class="dim"># Check auto-annotate status</span>
+<span class="prompt">$</span> <span class="cmd">curl localhost:3001/api/auto-annotate</span>
+<span class="out">{ "enabled": false }</span>
+
+<span class="dim"># Enable auto-annotate</span>
+<span class="prompt">$</span> <span class="cmd">curl -X POST localhost:3001/api/auto-annotate \</span>
+     <span class="cmd">-d '{"enabled": true}'</span>
+<span class="out">{ "enabled": true }</span>
+
+<span class="dim"># Now when you change a file, annotations are auto-generated</span></pre>
         </div>
     </div>
 </div>
@@ -1629,24 +1659,26 @@ Test Files  1 passed (1)
 <pre>
 <span class="dim">COMPONENT                        STATUS          TESTS    NOTES</span>
 <span class="dim">─────────────────────────────────────────────────────────────────</span>
-<span class="ok">Persistence Layer</span>                WORKING         94/94    SQLite + version history
+<span class="ok">Persistence Layer</span>                WORKING         102/102  SQLite + version history
 <span class="ok">Analysis Pipeline</span>                WORKING         ✓        tree-sitter + extraction
 <span class="ok">Graph Building</span>                   WORKING         ✓        Indexed, fast queries
+<span class="ok">Cross-File Resolution</span>            WORKING         ✓        Import → function edges
 <span class="ok">Annotations</span>                      WORKING         ✓        Full CRUD + history
+<span class="ok">Auto-Annotate Toggle</span>             WORKING         ✓        Template-based, fast
 <span class="ok">Drift Detection</span>                  WORKING         ✓        Severity calculation
 <span class="ok">Rules Evaluation</span>                 WORKING         ✓        All 6 conditions
-<span class="ok">MCP Tools</span>                        WORKING         -        12/12 tools
+<span class="ok">MCP Tools</span>                        WORKING         -        13/13 tools
 <span class="ok">WebSocket Events</span>                 WORKING         ✓        Real-time broadcast
 <span class="ok">Semantic Snapshot</span>                WORKING         ✓        Unified view
 <span class="ok">/codeflow skill</span>                  WORKING         -        Narrative generation
 <span class="ok">/codeflow-verify skill</span>           WORKING         ✓        Golden tests
+<span class="ok">Claude Feedback Loop</span>             WORKING         ✓        Violations to stderr
 
 <span class="warn">Concept Shifts</span>                   PARTIAL         ✓        Pre-check works, Claude prompt manual
 <span class="warn">Module Summarization</span>             PARTIAL         ✓        Template-based, not AI
 
-<span class="err">Block Action</span>                     STUBBED         -        Defined, not enforced
-<span class="err">Auto-Regenerate</span>                  STUBBED         -        Defined, no handler
-<span class="err">Claude Feedback Loop</span>             NOT IMPL        -        One-way observation only
+<span class="warn">Block Action</span>                     PARTIAL         -        Defined, returns 409 but not enforced
+<span class="warn">Auto-Regenerate Action</span>           PARTIAL         -        Template-based, not LLM
 <span class="err">/annotate skill</span>                  NOT IMPL        -        Planned
 <span class="err">/codeflow-fix skill</span>              NOT IMPL        -        Planned
 </pre>
