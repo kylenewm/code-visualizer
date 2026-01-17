@@ -1,6 +1,6 @@
 # CodeFlow Visualizer
 
-Real-time code visualization for understanding how your codebase connects. See call graphs, trace execution flow, and watch changes as they happen.
+Real-time semantic observability for AI-assisted coding. Track code changes, visualize call graphs, and maintain documentation that stays in sync with your code.
 
 ## Visual Tour
 
@@ -16,21 +16,21 @@ The Architecture view shows module dependencies as an interactive diagram. The l
 
 ![Changes View](docs/step2-changes.png)
 
-The Changes view provides a live feed of file modifications with git-style diffs. Each change shows the file name, line counts (+added/-removed), timestamp, and which functions were affected. Click any entry to expand the full diff with syntax highlighting. The badges indicate NEW files vs MODified files.
+The Changes view provides a live feed of file modifications with git-style diffs. Each change shows the file name, line counts (+added/-removed), timestamp, and which functions were affected. Click any entry to expand the full diff with syntax highlighting.
 
 ### 3. Walkthrough View
 *Step through execution flow*
 
 ![Walkthrough View](docs/step3-walkthrough.png)
 
-The Walkthrough view displays the call tree from any entry point. Starting from `handleRequest`, you can see the complete execution flow: it calls `validateInput` (which may throw `ValidationError`), then `processData` (which calls `transformData` and `saveToDb`), and finally `formatResponse`. Each step shows the function signature and a preview of what it does.
+The Walkthrough view displays the call tree from any entry point. Starting from any function, you can see the complete execution flow with each step showing the function signature and what it does.
 
 ### 4. Graph View
 *Visualize the complete call graph*
 
 ![Graph View](docs/step4-graph.png)
 
-The Graph view renders all 300+ functions as an interactive node graph. Nodes are color-coded by file, and edges show call relationships. Click any node to see its details: where it lives in the codebase, how callers reach it (the call chain), what it does (signature + code preview), impact analysis (how many functions are affected by changes), and what functions it calls.
+The Graph view renders all functions as an interactive node graph. Nodes are color-coded by file, and edges show call relationships including cross-file imports. Click any node to see callers, callees, and impact analysis.
 
 ---
 
@@ -40,93 +40,125 @@ The Graph view renders all 300+ functions as an interactive node graph. Nodes ar
 # Clone and install
 git clone https://github.com/kylenewm/code-visualizer.git
 cd code-visualizer
-npm install    # installs both backend and frontend
+npm install
 
 # Start (analyzes current directory)
 npm run dev
 
-# Or analyze a different project
+# Or analyze a specific project
 npm run dev /path/to/your/project
 ```
 
 Open http://localhost:5173 in your browser.
 
-## Try It Out
+## Key Features
 
-The repo includes test fixtures you can explore:
+| Feature | Description |
+|---------|-------------|
+| **Call Graph Analysis** | Tree-sitter parsing extracts functions, classes, and call relationships |
+| **Cross-File Resolution** | Resolves imports to actual function definitions across files |
+| **Semantic Annotations** | Document what code *does*, not just what it *is* |
+| **Drift Detection** | Alerts when code changes but documentation doesn't |
+| **Auto-Annotate** | Automatically generate annotations for new/modified functions |
+| **Real-Time Updates** | WebSocket pushes changes as you code |
+| **Claude Integration** | 13 MCP tools + post-edit hook for AI-assisted workflows |
 
-```bash
-# Analyze the test fixtures
-npm run dev test/fixtures/e2e-project
+## Architecture
 
-# Or analyze CodeFlow itself
-npm run dev .
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Web UI (React + D3)                      │
+├─────────────────────────────────────────────────────────────────┤
+│  REST API        │  WebSocket Events  │  MCP Tools (13)         │
+├──────────────────┴───────────────────┴──────────────────────────┤
+│                     Express Server                               │
+├─────────────────────────────────────────────────────────────────┤
+│  Change Detector  │  Analysis Pipeline  │  Rules Engine          │
+│  (hooks + watcher)│  (tree-sitter)      │  (drift + blocks)      │
+├──────────────────┴───────────────────┴──────────────────────────┤
+│                     Graph Engine (graphlib)                      │
+├─────────────────────────────────────────────────────────────────┤
+│                     SQLite (annotations + history)               │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Features
+**Key Technical Decisions:**
+- **Tree-sitter** for fast, accurate AST parsing (TypeScript + Python)
+- **SQLite** for persistence with full version history
+- **Stable node IDs** survive file renames and refactors
+- **Content hashing** detects changes without diffing source
 
-| View | Purpose |
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/graph` | Full call graph with nodes and edges |
+| `GET /api/modules` | Module-level architecture summary |
+| `GET /api/search?q=` | Search nodes by name or annotation |
+| `GET /api/changes` | Recent changes with git diffs |
+| `GET /api/annotations/:id` | Get annotation for a function |
+| `POST /api/annotations` | Create/update annotation |
+| `GET /api/touched` | Functions needing annotation review |
+| `GET /api/auto-annotate` | Check auto-annotate status |
+| `POST /api/auto-annotate` | Toggle auto-annotate on/off |
+| `POST /api/rules/evaluate` | Evaluate rules against current state |
+| `GET /api/snapshot` | Full semantic snapshot |
+
+## MCP Tools (Claude Integration)
+
+When used with Claude Code, these tools are available:
+
+| Tool | Purpose |
 |------|---------|
-| **Architecture** | Module-level overview, drill into files/functions |
-| **Changes** | Live feed of modifications with git diffs |
-| **Walkthrough** | Step through execution flow from any entry point |
-| **Graph** | Interactive call graph with 300+ node support |
+| `search_functions` | Find functions by name pattern |
+| `get_callers` | Find all functions that call a given function |
+| `get_callees` | Find all functions called by a given function |
+| `get_call_chain` | Trace execution flow from entry point |
+| `get_file_functions` | List all functions in a file |
+| `get_touched_functions` | Functions modified since last annotation |
+| `annotate_function` | Add semantic annotation to a function |
+| `get_stats` | Codebase statistics |
+
+## Development
+
+```bash
+npm test              # Run tests (102 passing)
+npm run typecheck     # Type check
+npm run dev:web       # Frontend only (hot reload)
+```
 
 **Keyboard shortcuts:** `/` search, `1-4` switch views, `F` focus mode, `?` help
 
 ## Supported Languages
 
-- TypeScript / JavaScript
-- Python
-
-## How It Works
-
-1. **Parser** - tree-sitter extracts AST from source files
-2. **Extractor** - identifies functions, classes, imports, call sites
-3. **Graph Engine** - builds call graph with typed edges
-4. **File Watcher** - re-analyzes on changes, pushes via WebSocket
-5. **Web UI** - React + D3 visualization with Zustand state
+- TypeScript / JavaScript (full analysis + type resolution)
+- Python (parsing + call extraction)
 
 ## Project Structure
 
 ```
 src/
-  analyzer/       # Tree-sitter parsing and extraction
-  graph/          # Call graph data structure
-  hooks/          # Change detection (file watcher)
-  server/         # Express API + WebSocket
+  analyzer/       # Tree-sitter parsing, cross-file resolution
+  graph/          # Call graph with stable node identity
+  hooks/          # Change detection (Claude hooks + file watcher)
+  server/         # Express API + WebSocket + MCP
+  storage/        # SQLite persistence, annotation store
 web/src/
-  components/     # React components
-  lib/            # State, layout, keyboard shortcuts
+  components/     # React components (Graph, Changes, Walkthrough)
+  lib/            # State management, layout, keyboard shortcuts
 ```
 
-## API
+## Stats
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/graph` | Full call graph |
-| `GET /api/modules` | Module architecture |
-| `GET /api/search?q=` | Search nodes |
-| `GET /api/changes` | Recent changes with diffs |
-
-## Development
-
-```bash
-npm test              # Run tests (65 passing)
-npm run typecheck     # Type check
-npm run dev:web       # Frontend only (hot reload)
-```
+- ~16,000 lines of TypeScript
+- 102 tests passing
+- 13 MCP tools
+- Sub-second analysis for 200+ file projects
 
 ## Requirements
 
 - Node.js 18+
 - npm 9+
-
-## Stats
-
-- ~11,400 lines of code
-- 65 tests passing
-- TypeScript throughout
 
 ## License
 
