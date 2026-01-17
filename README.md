@@ -155,6 +155,10 @@ web/src/
 - 13 MCP tools
 - Sub-second analysis for 200+ file projects
 
+## Documentation
+
+For a deep dive into how the system works, see the [System Walkthrough](docs/system-walkthrough.html).
+
 ## Requirements
 
 - Node.js 18+
