@@ -138,26 +138,6 @@ npm run dev:web       # Frontend only (hot reload)
 - TypeScript / JavaScript (full analysis + type resolution)
 - Python (parsing + call extraction)
 
-## Project Structure
-
-```
-src/
-  analyzer/       # Tree-sitter parsing, cross-file resolution
-  graph/          # Call graph with stable node identity
-  hooks/          # Change detection (Claude hooks + file watcher)
-  server/         # Express API + WebSocket + MCP
-  storage/        # SQLite persistence, annotation store
-web/src/
-  components/     # React components (Graph, Changes, Walkthrough)
-  lib/            # State management, layout, keyboard shortcuts
-```
-
-## Stats
-
-- ~16,000 lines of TypeScript
-- 102 tests passing
-- 13 MCP tools
-- Sub-second analysis for 200+ file projects
 
 ## Documentation
 
