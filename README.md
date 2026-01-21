@@ -2,6 +2,10 @@
 
 Real-time semantic observability for AI-assisted coding. Track code changes, visualize call graphs, and maintain documentation that stays in sync with your code.
 
+**Two ways to use it:**
+- **For you:** Visual UI to understand what changed and how code connects
+- **For Claude:** MCP tools so Claude can search functions, trace calls, and understand your codebase while coding
+
 ## Visual Tour
 
 ### 1. Architecture View
@@ -106,7 +110,7 @@ Open http://localhost:5173 in your browser.
 
 ## MCP Tools (Claude Integration)
 
-When used with Claude Code, these tools are available:
+Give Claude deep understanding of your codebase. Instead of grepping through files, Claude can query the call graph directly:
 
 | Tool | Purpose |
 |------|---------|
@@ -154,6 +158,10 @@ web/src/
 - 102 tests passing
 - 13 MCP tools
 - Sub-second analysis for 200+ file projects
+
+## Documentation
+
+For a deep dive into how the system works, see the [System Walkthrough](docs/system-walkthrough.html).
 
 ## Requirements
 
